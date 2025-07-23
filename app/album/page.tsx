@@ -41,18 +41,18 @@ export default function AlbumPage() {
   const [loading, setLoading] = useState(true)
 
   const stickerSlots = [
-    { points: 5, emoji: "⭐" },
-    { points: 10, emoji: "🏆" },
-    { points: 15, emoji: "🎖️" },
-    { points: 20, emoji: "💎" },
-    { points: 25, emoji: "👑" },
-    { points: 30, emoji: "🔥" },
-    { points: 5, emoji: "⭐" },
-    { points: 10, emoji: "🏆" },
-    { points: 15, emoji: "🎖️" },
-    { points: 20, emoji: "💎" },
-    { points: 25, emoji: "👑" },
-    { points: 30, emoji: "🔥" },
+    // 15 slots de 5 pontos
+    ...Array(15).fill({ points: 5, emoji: "⭐" }),
+    // 15 slots de 10 pontos
+    ...Array(15).fill({ points: 10, emoji: "🏆" }),
+    // 15 slots de 15 pontos
+    ...Array(15).fill({ points: 15, emoji: "🎖️" }),
+    // 15 slots de 20 pontos
+    ...Array(15).fill({ points: 20, emoji: "💎" }),
+    // 15 slots de 25 pontos
+    ...Array(15).fill({ points: 25, emoji: "👑" }),
+    // 15 slots de 30 pontos
+    ...Array(15).fill({ points: 30, emoji: "🔥" }),
   ]
 
   useEffect(() => {
@@ -152,13 +152,18 @@ export default function AlbumPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 lg:grid-cols-15 gap-3">
                     {stickerSlots.map((slot, index) => {
-                      const earnedSticker = stickers.find(
-                        (s) =>
-                          s.points === slot.points &&
-                          stickers.filter((st) => st.points === slot.points).indexOf(s) === Math.floor(index / 6),
-                      )
+                      // Calcular quantas figurinhas deste valor o usuário já tem
+                      const userStickersOfThisValue = stickers.filter((s) => s.points === slot.points)
+
+                      // Determinar qual slot específico este é (0-14 para cada valor)
+                      const slotsOfSameValue = stickerSlots.filter((s) => s.points === slot.points)
+                      const slotIndexForThisValue =
+                        stickerSlots.slice(0, index + 1).filter((s) => s.points === slot.points).length - 1
+
+                      // Verificar se este slot específico deve estar preenchido
+                      const earnedSticker = slotIndexForThisValue < userStickersOfThisValue.length
 
                       return (
                         <StickerCard key={index} points={slot.points} emoji={slot.emoji} earned={!!earnedSticker} />
