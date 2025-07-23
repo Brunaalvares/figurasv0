@@ -193,46 +193,56 @@ export default function AdminPage() {
         createdAt: new Date().toISOString(),
       }
 
-      // Salvar no Firestore (se falhar, continua mesmo assim)
-      try {
-        await setDoc(doc(db, "users", uid), userData)
-        console.log("✅ Salvo no Firestore")
-      } catch (firestoreError) {
-        console.warn("⚠️ Firestore error (continuando):", firestoreError)
-      }
+             // Salvar no Firestore (OBRIGATÓRIO para controle de pontos)
+       await setDoc(doc(db, "users", uid), userData)
+       console.log("✅ Salvo no Firestore")
 
-      // Adicionar à lista local SEMPRE
-      const newEmployee: Employee = {
-        id: uid,
-        name,
-        email,
-        role: "employee",
-        totalPoints: 0
-      }
-      
-      setEmployees(prev => [...prev, newEmployee])
-      
-      // Limpar campos
-      setNewEmployeeName("")
-      setNewEmployeeEmail("")
-      
-      alert(`✅ Colaborador "${name}" criado!\nEmail: ${email}\nSenha: senha123`)
+       // Verificar se foi salvo corretamente
+       const checkDoc = await getDoc(doc(db, "users", uid))
+       if (!checkDoc.exists()) {
+         throw new Error("Falha ao salvar no Firestore - colaborador não pode receber pontos")
+       }
+
+       // Recarregar dados do servidor para garantir sincronização
+       await loadData()
+       
+       // Limpar campos
+       setNewEmployeeName("")
+       setNewEmployeeEmail("")
+       
+       console.log("✅ Colaborador adicionado e sincronizado")
+       alert(`✅ Colaborador "${name}" criado com sucesso!\nEmail: ${email}\nSenha: senha123\n\nO colaborador já pode receber figurinhas e pontos!`)
       
     } catch (error: any) {
       console.error("❌ Erro:", error)
       
       let msg = "Erro desconhecido"
+      let instructions = ""
+      
       if (error.code === "auth/email-already-in-use") {
         msg = "Email já está em uso"
+        instructions = "Use um email diferente."
       } else if (error.code === "auth/invalid-email") {
         msg = "Email inválido"
+        instructions = "Verifique o formato do email."
       } else if (error.code === "auth/weak-password") {
         msg = "Senha muito fraca"
+        instructions = "A senha padrão 'senha123' deveria funcionar."
+      } else if (error.code === "permission-denied") {
+        msg = "Erro de permissão no Firestore"
+        instructions = "SOLUÇÃO:\n1. Execute: npm run firestore:rules\n2. Copie o conteúdo do arquivo firestore.rules\n3. Cole no Firebase Console → Firestore → Rules → Publish"
+      } else if (error.message?.includes("Falha ao salvar no Firestore")) {
+        msg = "Colaborador não foi salvo no banco de dados"
+        instructions = "Verifique se as regras do Firestore estão configuradas corretamente."
       } else {
         msg = error.message || "Erro ao criar colaborador"
       }
       
-      alert(`❌ Erro: ${msg}`)
+      const fullMessage = instructions 
+        ? `❌ Erro: ${msg}\n\n${instructions}`
+        : `❌ Erro: ${msg}`
+      
+      alert(fullMessage)
     } finally {
       setLoading(false)
     }
