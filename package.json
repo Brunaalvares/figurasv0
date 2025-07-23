@@ -9,7 +9,8 @@
     "start": "next start",
     "firestore:rules": "node scripts/deploy-firestore-rules.js",
     "firestore:deploy": "firebase deploy --only firestore:rules",
-    "firestore:test": "firebase firestore:rules:test --project=sistema-figuras"
+    "firestore:test": "firebase firestore:rules:test --project=sistema-figuras",
+    "debug:admin": "node scripts/debug-admin-user.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

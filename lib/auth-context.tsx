@@ -49,6 +49,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Função para garantir que o admin principal sempre tenha role correto
+  const ensureAdminRole = async (user: User): Promise<"admin" | "employee"> => {
+    // Se for o admin principal, sempre retornar admin e corrigir no banco se necessário
+    if (user.email === "marketing2@avalyst.com.br") {
+      console.log("🔧 Admin principal detectado, garantindo role admin")
+      
+      const adminData: UserData = {
+        name: "Marketing Admin",
+        email: "marketing2@avalyst.com.br",
+        role: "admin",
+        totalPoints: 0,
+        createdAt: new Date().toISOString(),
+      }
+      
+      try {
+        // Forçar criação/atualização do documento com role admin
+        await setDoc(doc(db, "users", user.uid), adminData, { merge: true })
+        console.log("✅ Admin role garantido no banco de dados")
+        return "admin"
+      } catch (error) {
+        console.error("❌ Erro ao garantir admin role:", error)
+        return "admin" // Mesmo com erro, retornar admin para o email principal
+      }
+    }
+    
+    // Para outros usuários, seguir lógica normal
+    return await getNormalUserRole(user)
+  }
+
+  const getNormalUserRole = async (user: User): Promise<"admin" | "employee"> => {
+    try {
+      // Busca otimizada: primeiro por UID (mais eficiente)
+      const userDocById = await getDoc(doc(db, "users", user.uid))
+
+      if (userDocById.exists()) {
+        const userData = validateUserData(userDocById.data())
+        if (userData) {
+          console.log("User data found by UID:", userData)
+          return userData.role
+        } else {
+          console.error("Invalid user data structure:", userDocById.data())
+          return "employee" // Fallback seguro
+        }
+      } else {
+        // Fallback: buscar por email apenas se não existir por UID
+        console.log("User not found by UID, searching by email:", user.email)
+        const usersQuery = query(collection(db, "users"), where("email", "==", user.email))
+        const usersSnapshot = await getDocs(usersQuery)
+
+        if (!usersSnapshot.empty) {
+          const userData = validateUserData(usersSnapshot.docs[0].data())
+          if (userData) {
+            console.log("User data found by email:", userData)
+            
+            // Migrar documento para usar UID como chave
+            await setDoc(doc(db, "users", user.uid), userData)
+            console.log("User document migrated to UID-based key")
+            return userData.role
+          } else {
+            console.error("Invalid user data structure:", usersSnapshot.docs[0].data())
+            return "employee"
+          }
+        } else {
+          console.log("User not found in database, creating default employee record")
+          const defaultUserData: UserData = {
+            name: user.displayName || user.email?.split("@")[0] || "Usuário",
+            email: user.email!,
+            role: "employee",
+            totalPoints: 0,
+            createdAt: new Date().toISOString(),
+          }
+          
+          await setDoc(doc(db, "users", user.uid), defaultUserData)
+          return "employee"
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error)
+      return "employee" // Default role on error
+    }
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("Auth state changed:", user?.email)
@@ -56,53 +138,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (user) {
         try {
-          // Busca otimizada: primeiro por UID (mais eficiente)
-          const userDocById = await getDoc(doc(db, "users", user.uid))
-
-          if (userDocById.exists()) {
-            const userData = validateUserData(userDocById.data())
-            if (userData) {
-              console.log("User data found by UID:", userData)
-              setUserRole(userData.role)
-            } else {
-              console.error("Invalid user data structure:", userDocById.data())
-              setUserRole("employee") // Fallback seguro
-            }
-          } else {
-            // Fallback: buscar por email apenas se não existir por UID
-            console.log("User not found by UID, searching by email:", user.email)
-            const usersQuery = query(collection(db, "users"), where("email", "==", user.email))
-            const usersSnapshot = await getDocs(usersQuery)
-
-            if (!usersSnapshot.empty) {
-              const userData = validateUserData(usersSnapshot.docs[0].data())
-              if (userData) {
-                console.log("User data found by email:", userData)
-                setUserRole(userData.role)
-                
-                // Migrar documento para usar UID como chave
-                await setDoc(doc(db, "users", user.uid), userData)
-                console.log("User document migrated to UID-based key")
-              } else {
-                console.error("Invalid user data structure:", usersSnapshot.docs[0].data())
-                setUserRole("employee")
-              }
-            } else {
-              console.log("User not found in database, creating default employee record")
-              const defaultUserData: UserData = {
-                name: user.displayName || user.email?.split("@")[0] || "Usuário",
-                email: user.email!,
-                role: "employee",
-                totalPoints: 0,
-                createdAt: new Date().toISOString(),
-              }
-              
-              await setDoc(doc(db, "users", user.uid), defaultUserData)
-              setUserRole("employee")
-            }
-          }
+          const role = await ensureAdminRole(user)
+          setUserRole(role)
+          console.log(`✅ Role determinado: ${role} para ${user.email}`)
         } catch (error) {
-          console.error("Error fetching user role:", error)
+          console.error("Error determining user role:", error)
           setUserRole("employee") // Default role on error
         }
       } else {
