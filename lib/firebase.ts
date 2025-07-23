@@ -8,7 +8,7 @@ const firebaseConfig = {
   projectId: "sistema-figuras",
   storageBucket: "sistema-figuras.firebasestorage.app",
   messagingSenderId: "110106643382",
-  appId: "1:110106643382:web:aa07266b28d17a939a4f17",
+  appId: "1:110106643382:web:23de36713a98f4a49a4f17",
 }
 
 const app = initializeApp(firebaseConfig)

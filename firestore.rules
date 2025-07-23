@@ -1,0 +1,97 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função para verificar se o usuário é admin
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email == 'marketing2@avalyst.com.br';
+    }
+    
+    // Função para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Função para verificar se o usuário é o dono do documento
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Função para verificar se o usuário tem role de admin no banco
+    function isAdminByRole() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Regras para a coleção 'users'
+    match /users/{userId} {
+      // Admin pode ler e escrever todos os documentos
+      allow read, write: if isAdmin();
+      
+      // Usuários podem ler apenas seu próprio documento
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Usuários podem criar seu próprio documento (para registro inicial)
+      allow create: if isAuthenticated() && isOwner(userId) && 
+                    request.resource.data.email == request.auth.token.email;
+      
+      // Usuários podem atualizar apenas campos específicos do seu próprio documento
+      allow update: if isAuthenticated() && isOwner(userId) &&
+                    // Não pode alterar role, email ou outros campos críticos
+                    !request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['role', 'email', 'createdAt']);
+    }
+    
+    // Regras para a coleção 'stickers' (figurinhas)
+    match /stickers/{stickerId} {
+      // Admin pode ler e escrever todas as figurinhas
+      allow read, write: if isAdmin();
+      
+      // Admin com role no banco também pode criar figurinhas
+      allow create: if isAdminByRole();
+      
+      // Usuários podem ler apenas suas próprias figurinhas
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      
+      // Usuários não podem criar, atualizar ou deletar figurinhas
+      // (apenas admin pode fazer isso)
+    }
+    
+    // Regras para a coleção 'achievements' (conquistas)
+    match /achievements/{achievementId} {
+      // Admin pode ler e escrever todas as conquistas
+      allow read, write: if isAdmin();
+      
+      // Admin com role no banco também pode criar conquistas
+      allow create: if isAdminByRole();
+      
+      // Usuários podem ler apenas suas próprias conquistas
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      
+      // Usuários não podem criar, atualizar ou deletar conquistas
+      // (apenas admin pode fazer isso)
+    }
+    
+    // Regras para a coleção 'customAchievements' (metas customizadas)
+    match /customAchievements/{achievementId} {
+      // Admin pode ler e escrever todas as metas customizadas
+      allow read, write: if isAdmin();
+      
+      // Admin com role no banco também pode gerenciar metas
+      allow read, write: if isAdminByRole();
+      
+      // Usuários podem apenas ler as metas customizadas (para visualizar)
+      allow read: if isAuthenticated();
+      
+      // Usuários não podem criar, atualizar ou deletar metas customizadas
+    }
+    
+    // Regra de fallback - negar tudo que não foi explicitamente permitido
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

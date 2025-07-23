@@ -6,7 +6,12 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "firestore:rules": "node scripts/deploy-firestore-rules.js",
+    "firestore:deploy": "firebase deploy --only firestore:rules",
+    "firestore:test": "firebase firestore:rules:test --project=sistema-figuras",
+    "debug:admin": "node scripts/debug-admin-user.js",
+    "debug:firestore": "node scripts/test-firestore-permissions.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -65,6 +70,8 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.31.0",
+    "eslint-config-next": "15.4.3",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

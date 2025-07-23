@@ -10,8 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc } from "firebase/firestore"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc } from "firebase/firestore"
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
+import { initializeApp } from "firebase/app"
+import { getAuth } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
 
@@ -139,8 +141,8 @@ export default function AdminPage() {
       // Carregar colaboradores
       const usersSnapshot = await getDocs(collection(db, "users"))
       const employeesList = usersSnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((user) => user.role === "employee") as Employee[]
+        .map((doc) => ({ id: doc.id, ...doc.data() } as Employee))
+        .filter((user) => user.role === "employee")
       setEmployees(employeesList)
 
       // Carregar metas customizadas
@@ -158,28 +160,108 @@ export default function AdminPage() {
   }
 
   const handleAddEmployee = async () => {
-    if (!newEmployeeName || !newEmployeeEmail) return
+    // Validação
+    if (!newEmployeeName?.trim() || !newEmployeeEmail?.trim()) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newEmployeeEmail.trim())) {
+      alert("Email inválido.")
+      return
+    }
+
+    setLoading(true)
 
     try {
-      // Criar usuário no Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, newEmployeeEmail, "senha123")
-
-      // Adicionar dados do usuário no Firestore
-      await addDoc(collection(db, "users"), {
-        name: newEmployeeName,
-        email: newEmployeeEmail,
+      const name = newEmployeeName.trim()
+      const email = newEmployeeEmail.trim()
+      
+      console.log("🚀 Criando colaborador:", { name, email })
+      
+      // Criar instância separada do Firebase Auth para não deslogar o admin
+      const secondaryApp = initializeApp({
+        apiKey: "AIzaSyD995cU7-SuyTbAME9W8SMrloSvhWRLTbo",
+        authDomain: "sistema-figuras.firebaseapp.com",
+        projectId: "sistema-figuras",
+        storageBucket: "sistema-figuras.firebasestorage.app",
+        messagingSenderId: "110106643382",
+        appId: "1:110106643382:web:23de36713a98f4a49a4f17",
+      }, "secondary")
+      
+      const secondaryAuth = getAuth(secondaryApp)
+      
+      // Criar usuário na instância secundária (não afeta a sessão do admin)
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, "senha123")
+      const uid = userCredential.user.uid
+      
+      console.log("✅ Usuário criado:", uid)
+      
+      // Deslogar da instância secundária para limpar
+      await signOut(secondaryAuth)
+      
+      // Dados para salvar
+      const userData = {
+        name,
+        email,
         role: "employee",
         totalPoints: 0,
         createdAt: new Date().toISOString(),
-      })
+      }
 
-      setNewEmployeeName("")
-      setNewEmployeeEmail("")
-      loadData()
-      alert("Colaborador adicionado com sucesso!")
-    } catch (error) {
-      console.error("Erro ao adicionar colaborador:", error)
-      alert("Erro ao adicionar colaborador")
+             // Salvar no Firestore (OBRIGATÓRIO para controle de pontos)
+       await setDoc(doc(db, "users", uid), userData)
+       console.log("✅ Salvo no Firestore")
+
+       // Verificar se foi salvo corretamente
+       const checkDoc = await getDoc(doc(db, "users", uid))
+       if (!checkDoc.exists()) {
+         throw new Error("Falha ao salvar no Firestore - colaborador não pode receber pontos")
+       }
+
+       // Recarregar dados do servidor para garantir sincronização
+       await loadData()
+       
+       // Limpar campos
+       setNewEmployeeName("")
+       setNewEmployeeEmail("")
+       
+       console.log("✅ Colaborador adicionado e sincronizado")
+       alert(`✅ Colaborador "${name}" criado com sucesso!\nEmail: ${email}\nSenha: senha123\n\nO colaborador já pode receber figurinhas e pontos!`)
+      
+    } catch (error: any) {
+      console.error("❌ Erro:", error)
+      
+      let msg = "Erro desconhecido"
+      let instructions = ""
+      
+      if (error.code === "auth/email-already-in-use") {
+        msg = "Email já está em uso"
+        instructions = "Use um email diferente."
+      } else if (error.code === "auth/invalid-email") {
+        msg = "Email inválido"
+        instructions = "Verifique o formato do email."
+      } else if (error.code === "auth/weak-password") {
+        msg = "Senha muito fraca"
+        instructions = "A senha padrão 'senha123' deveria funcionar."
+      } else if (error.code === "permission-denied") {
+        msg = "Erro de permissão no Firestore"
+        instructions = "SOLUÇÃO:\n1. Execute: npm run firestore:rules\n2. Copie o conteúdo do arquivo firestore.rules\n3. Cole no Firebase Console → Firestore → Rules → Publish"
+      } else if (error.message?.includes("Falha ao salvar no Firestore")) {
+        msg = "Colaborador não foi salvo no banco de dados"
+        instructions = "Verifique se as regras do Firestore estão configuradas corretamente."
+      } else {
+        msg = error.message || "Erro ao criar colaborador"
+      }
+      
+      const fullMessage = instructions 
+        ? `❌ Erro: ${msg}\n\n${instructions}`
+        : `❌ Erro: ${msg}`
+      
+      alert(fullMessage)
+    } finally {
+      setLoading(false)
     }
   }
 
