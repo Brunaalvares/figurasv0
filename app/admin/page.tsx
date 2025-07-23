@@ -15,7 +15,7 @@ import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
 import { initializeApp } from "firebase/app"
 import { getAuth } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
-import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
+import { Users, Plus, Award, Star, LogOut, Target, Trash2, Edit } from "lucide-react"
 
 interface Employee {
   id: string
@@ -87,6 +87,12 @@ export default function AdminPage() {
   const [achievementDescription, setAchievementDescription] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("")
   const [selectedAchievement, setSelectedAchievement] = useState("")
+
+  // Estados para edição de colaborador
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [editEmployeeName, setEditEmployeeName] = useState("")
+  const [editEmployeeEmail, setEditEmployeeEmail] = useState("")
+  const [editEmployeePoints, setEditEmployeePoints] = useState("")
 
   // Estados para criar nova meta
   const [newAchievementName, setNewAchievementName] = useState("")
@@ -260,6 +266,75 @@ export default function AdminPage() {
         : `❌ Erro: ${msg}`
       
       alert(fullMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openEditEmployee = (employee: Employee) => {
+    setEditingEmployee(employee)
+    setEditEmployeeName(employee.name)
+    setEditEmployeeEmail(employee.email)
+    setEditEmployeePoints(employee.totalPoints.toString())
+  }
+
+  const closeEditEmployee = () => {
+    setEditingEmployee(null)
+    setEditEmployeeName("")
+    setEditEmployeeEmail("")
+    setEditEmployeePoints("")
+  }
+
+  const handleEditEmployee = async () => {
+    if (!editingEmployee || !editEmployeeName.trim() || !editEmployeeEmail.trim()) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(editEmployeeEmail.trim())) {
+      alert("Email inválido.")
+      return
+    }
+
+    const newPoints = parseInt(editEmployeePoints) || 0
+    if (newPoints < 0) {
+      alert("Pontos não podem ser negativos.")
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      console.log("🔄 Editando colaborador:", editingEmployee.id)
+      
+      // Atualizar dados no Firestore
+      await updateDoc(doc(db, "users", editingEmployee.id), {
+        name: editEmployeeName.trim(),
+        email: editEmployeeEmail.trim(),
+        totalPoints: newPoints,
+      })
+
+      console.log("✅ Colaborador atualizado no Firestore")
+
+      // Recarregar dados
+      await loadData()
+      
+      closeEditEmployee()
+      
+      alert(`✅ Colaborador "${editEmployeeName.trim()}" atualizado com sucesso!`)
+      
+    } catch (error: any) {
+      console.error("❌ Erro ao editar colaborador:", error)
+      
+      let msg = "Erro desconhecido"
+      if (error.code === "permission-denied") {
+        msg = "Erro de permissão no Firestore"
+      } else {
+        msg = error.message || "Erro ao editar colaborador"
+      }
+      
+      alert(`❌ Erro: ${msg}`)
     } finally {
       setLoading(false)
     }
@@ -703,6 +778,7 @@ export default function AdminPage() {
                           <th className="text-left py-3 px-4">Email</th>
                           <th className="text-center py-3 px-4">Pontos Totais</th>
                           <th className="text-center py-3 px-4">Status</th>
+                          <th className="text-center py-3 px-4">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -720,6 +796,16 @@ export default function AdminPage() {
                                 Ativo
                               </span>
                             </td>
+                            <td className="py-3 px-4 text-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditEmployee(employee)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -730,6 +816,78 @@ export default function AdminPage() {
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Modal de Edição de Colaborador */}
+        {editingEmployee && (
+          <Dialog open={!!editingEmployee} onOpenChange={closeEditEmployee}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Colaborador</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome
+                  </label>
+                  <Input
+                    placeholder="Nome completo"
+                    value={editEmployeeName}
+                    onChange={(e) => setEditEmployeeName(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="Email"
+                    value={editEmployeeEmail}
+                    onChange={(e) => setEditEmployeeEmail(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Pontos Totais
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={editEmployeePoints}
+                    onChange={(e) => setEditEmployeePoints(e.target.value)}
+                    disabled={loading}
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Ajuste a pontuação total do colaborador
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <Button 
+                    onClick={handleEditEmployee} 
+                    disabled={loading}
+                    className="flex-1"
+                  >
+                    {loading ? "Salvando..." : "Salvar Alterações"}
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={closeEditEmployee}
+                    disabled={loading}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </ProtectedRoute>
   )
