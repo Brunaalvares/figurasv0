@@ -11,7 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc } from "firebase/firestore"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
+import { initializeApp } from "firebase/app"
+import { getAuth } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
 
@@ -178,11 +180,26 @@ export default function AdminPage() {
       
       console.log("🚀 Criando colaborador:", { name, email })
       
-      // Criar no Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, "senha123")
+      // Criar instância separada do Firebase Auth para não deslogar o admin
+      const secondaryApp = initializeApp({
+        apiKey: "AIzaSyD995cU7-SuyTbAME9W8SMrloSvhWRLTbo",
+        authDomain: "sistema-figuras.firebaseapp.com",
+        projectId: "sistema-figuras",
+        storageBucket: "sistema-figuras.firebasestorage.app",
+        messagingSenderId: "110106643382",
+        appId: "1:110106643382:web:23de36713a98f4a49a4f17",
+      }, "secondary")
+      
+      const secondaryAuth = getAuth(secondaryApp)
+      
+      // Criar usuário na instância secundária (não afeta a sessão do admin)
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, "senha123")
       const uid = userCredential.user.uid
       
       console.log("✅ Usuário criado:", uid)
+      
+      // Deslogar da instância secundária para limpar
+      await signOut(secondaryAuth)
       
       // Dados para salvar
       const userData = {
