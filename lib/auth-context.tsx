@@ -86,8 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Criar usuário no Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      console.log("User created in Auth:", userCredential.user.uid)
 
-      // Criar documento no Firestore
+      // Criar documento no Firestore com o UID como ID do documento
       await setDoc(doc(db, "users", userCredential.user.uid), {
         name: name,
         email: email,
@@ -96,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
       })
 
-      console.log("Test user created successfully:", email)
+      console.log("Test user created successfully:", email, "with role:", role)
     } catch (error: any) {
       if (error.code === "auth/email-already-in-use") {
         console.log("User already exists:", email)
@@ -112,7 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       console.log("Attempting login for:", email)
-      await signInWithEmailAndPassword(auth, email, password)
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      console.log("Login successful for:", userCredential.user.email)
+
+      // Aguardar um pouco para garantir que o estado seja atualizado
+      await new Promise((resolve) => setTimeout(resolve, 1000))
     } catch (error: any) {
       console.error("Login error:", error)
 

@@ -27,8 +27,13 @@ export default function LoginPage() {
     try {
       console.log("Logging in with:", email)
       await login(email, password)
-      console.log("Login successful, redirecting...")
-      router.push("/album")
+      console.log("Login successful, waiting for role determination...")
+
+      // Aguardar um pouco para o role ser determinado
+      setTimeout(() => {
+        console.log("Redirecting to home page")
+        router.push("/")
+      }, 1500)
     } catch (error: any) {
       console.error("Login failed:", error)
       setError("Email ou senha incorretos. " + (error.message || ""))
@@ -78,7 +83,12 @@ export default function LoginPage() {
 
     try {
       await login(testEmail, testPassword)
-      router.push("/album")
+      console.log("Quick login successful, waiting for role determination...")
+
+      // Aguardar um pouco para o role ser determinado
+      setTimeout(() => {
+        router.push("/")
+      }, 1500)
     } catch (error: any) {
       setError("Erro no login: " + error.message)
     } finally {

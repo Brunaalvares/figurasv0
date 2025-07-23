@@ -15,12 +15,26 @@ export default function HomePage() {
       if (!user) {
         console.log("No user, redirecting to login")
         router.push("/login")
-      } else if (userRole === "admin") {
-        console.log("Admin user, redirecting to admin panel")
-        router.push("/admin")
       } else {
-        console.log("Regular user, redirecting to album")
-        router.push("/album")
+        console.log("User found:", user.email, "Role:", userRole)
+
+        if (userRole === "admin") {
+          console.log("Admin user, redirecting to admin panel")
+          router.push("/admin")
+        } else if (userRole === "employee") {
+          console.log("Employee user, redirecting to album")
+          router.push("/album")
+        } else {
+          console.log("Role not determined yet, waiting...")
+          // Se o role ainda não foi determinado, aguardar mais um pouco
+          setTimeout(() => {
+            if (userRole === "admin") {
+              router.push("/admin")
+            } else {
+              router.push("/album")
+            }
+          }, 2000)
+        }
       }
     }
   }, [user, userRole, loading, router])
