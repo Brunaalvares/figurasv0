@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc } from "firebase/firestore"
+import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc } from "firebase/firestore"
 import { createUserWithEmailAndPassword } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
@@ -192,27 +192,59 @@ export default function AdminPage() {
       await setDoc(doc(db, "users", userCredential.user.uid), userData)
       console.log("✅ Dados salvos no Firestore com UID:", userCredential.user.uid)
 
+      // Verificar se o documento foi realmente salvo
+      console.log("🔍 Verificando se o documento foi salvo...")
+      const savedDoc = await getDoc(doc(db, "users", userCredential.user.uid))
+      if (savedDoc.exists()) {
+        console.log("✅ Documento confirmado no Firestore:", savedDoc.data())
+      } else {
+        console.error("❌ Documento não encontrado após salvamento!")
+        throw new Error("Falha ao salvar documento no Firestore")
+      }
+
+      // Limpar campos do formulário
       setNewEmployeeName("")
       setNewEmployeeEmail("")
       
       console.log("🔄 Recarregando dados...")
       await loadData()
       
-      console.log("🎉 Colaborador adicionado com sucesso!")
-      alert("Colaborador adicionado com sucesso!")
-    } catch (error: any) {
-      console.error("Erro ao adicionar colaborador:", error)
+      // Verificar se o colaborador aparece na lista
+      const usersSnapshot = await getDocs(collection(db, "users"))
+      const employeesList = usersSnapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() } as Employee))
+        .filter((user) => user.role === "employee")
       
-      // Tratar erro de email já existente
+      console.log("📊 Total de colaboradores após adição:", employeesList.length)
+      console.log("📋 Lista de colaboradores:", employeesList.map(emp => ({ name: emp.name, email: emp.email })))
+      
+      console.log("🎉 Colaborador adicionado com sucesso!")
+      alert(`Colaborador "${newEmployeeName}" adicionado com sucesso!\nTotal de colaboradores: ${employeesList.length}`)
+    } catch (error: any) {
+      console.error("❌ Erro ao adicionar colaborador:", error)
+      console.error("❌ Código do erro:", error.code)
+      console.error("❌ Mensagem do erro:", error.message)
+      console.error("❌ Stack trace:", error.stack)
+      
+      // Tratar erros específicos
       if (error.code === "auth/email-already-in-use") {
         alert("Este email já está sendo usado por outro usuário.")
       } else if (error.code === "auth/invalid-email") {
         alert("Email inválido.")
       } else if (error.code === "auth/weak-password") {
         alert("Senha muito fraca. Use uma senha mais forte.")
+      } else if (error.code === "permission-denied") {
+        alert("Erro de permissão: Verifique se as regras do Firestore estão configuradas corretamente.")
+        console.error("🔒 Erro de permissão - possível problema com regras do Firestore")
+      } else if (error.message === "Falha ao salvar documento no Firestore") {
+        alert("Erro: O documento não foi salvo corretamente no banco de dados.")
       } else {
         alert(`Erro ao adicionar colaborador: ${error.message}`)
       }
+      
+      // Limpar campos mesmo em caso de erro
+      setNewEmployeeName("")
+      setNewEmployeeEmail("")
     }
   }
 
