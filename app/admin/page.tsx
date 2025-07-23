@@ -139,8 +139,8 @@ export default function AdminPage() {
       // Carregar colaboradores
       const usersSnapshot = await getDocs(collection(db, "users"))
       const employeesList = usersSnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((user) => user.role === "employee") as Employee[]
+        .map((doc) => ({ id: doc.id, ...doc.data() } as Employee))
+        .filter((user) => user.role === "employee")
       setEmployees(employeesList)
 
       // Carregar metas customizadas
