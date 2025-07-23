@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc } from "firebase/firestore"
+import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc } from "firebase/firestore"
 import { createUserWithEmailAndPassword } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
@@ -158,28 +158,61 @@ export default function AdminPage() {
   }
 
   const handleAddEmployee = async () => {
-    if (!newEmployeeName || !newEmployeeEmail) return
+    if (!newEmployeeName || !newEmployeeEmail) {
+      alert("Por favor, preencha todos os campos (nome e email).")
+      return
+    }
+
+    // Validação básica de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newEmployeeEmail)) {
+      alert("Por favor, insira um email válido.")
+      return
+    }
 
     try {
+      console.log("🔄 Iniciando criação de colaborador:", { name: newEmployeeName, email: newEmployeeEmail })
+      
       // Criar usuário no Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, newEmployeeEmail, "senha123")
-
-      // Adicionar dados do usuário no Firestore
-      await addDoc(collection(db, "users"), {
+      console.log("✅ Usuário criado no Firebase Auth:", userCredential.user.uid)
+      
+      // Usar o UID do usuário criado como ID do documento no Firestore
+      const userData = {
         name: newEmployeeName,
         email: newEmployeeEmail,
         role: "employee",
         totalPoints: 0,
         createdAt: new Date().toISOString(),
-      })
+      }
+
+      console.log("🔄 Salvando dados no Firestore:", userData)
+      
+      // Usar setDoc com o UID como ID do documento (não addDoc que gera ID aleatório)
+      await setDoc(doc(db, "users", userCredential.user.uid), userData)
+      console.log("✅ Dados salvos no Firestore com UID:", userCredential.user.uid)
 
       setNewEmployeeName("")
       setNewEmployeeEmail("")
-      loadData()
+      
+      console.log("🔄 Recarregando dados...")
+      await loadData()
+      
+      console.log("🎉 Colaborador adicionado com sucesso!")
       alert("Colaborador adicionado com sucesso!")
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao adicionar colaborador:", error)
-      alert("Erro ao adicionar colaborador")
+      
+      // Tratar erro de email já existente
+      if (error.code === "auth/email-already-in-use") {
+        alert("Este email já está sendo usado por outro usuário.")
+      } else if (error.code === "auth/invalid-email") {
+        alert("Email inválido.")
+      } else if (error.code === "auth/weak-password") {
+        alert("Senha muito fraca. Use uma senha mais forte.")
+      } else {
+        alert(`Erro ao adicionar colaborador: ${error.message}`)
+      }
     }
   }
 
