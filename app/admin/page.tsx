@@ -15,7 +15,7 @@ import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
 import { initializeApp } from "firebase/app"
 import { getAuth } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
-import { Users, Plus, Award, Star, LogOut, Target, Trash2, Edit } from "lucide-react"
+import { Users, Plus, Award, Star, LogOut, Target, Trash2, Edit, Trophy, Crown, Medal } from "lucide-react"
 
 interface Employee {
   id: string
@@ -114,6 +114,21 @@ export default function AdminPage() {
   const [editEmployeePoints, setEditEmployeePoints] = useState("")
   const [editCategoryPoints, setEditCategoryPoints] = useState<{[key: string]: string}>({})
   const [showCategoryPoints, setShowCategoryPoints] = useState(false)
+  
+  // Estados para rankings
+  const [selectedRankingCategory, setSelectedRankingCategory] = useState("Vendas")
+
+  // Função para obter ranking de uma categoria
+  const getCategoryRanking = (category: string) => {
+    return employees
+      .filter(emp => emp.categoryPoints && emp.categoryPoints[category] > 0)
+      .sort((a, b) => (b.categoryPoints?.[category] || 0) - (a.categoryPoints?.[category] || 0))
+      .map((emp, index) => ({
+        ...emp,
+        position: index + 1,
+        categoryPoints: emp.categoryPoints?.[category] || 0
+      }))
+  }
 
   // Estados para criar nova meta
   const [newAchievementName, setNewAchievementName] = useState("")
@@ -544,10 +559,11 @@ export default function AdminPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Tabs defaultValue="actions" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="actions">Ações Rápidas</TabsTrigger>
               <TabsTrigger value="achievements">Gerenciar Metas</TabsTrigger>
               <TabsTrigger value="employees">Colaboradores</TabsTrigger>
+              <TabsTrigger value="rankings">Rankings</TabsTrigger>
             </TabsList>
 
             {/* Ações Rápidas */}
@@ -898,6 +914,139 @@ export default function AdminPage() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* Rankings por Categoria */}
+            <TabsContent value="rankings">
+              <div className="space-y-6">
+                {/* Seletor de Categoria */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-yellow-500" />
+                      Rankings por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {defaultCategories.map((category) => (
+                        <Button
+                          key={category}
+                          variant={selectedRankingCategory === category ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSelectedRankingCategory(category)}
+                          className="flex items-center gap-2"
+                        >
+                          {category === "Vendas" && "🟢"}
+                          {category === "Recuperação" && "🟠"}
+                          {category === "Atualização" && "🟣"}
+                          {category === "Galáxia de reconhecimento" && "🟡"}
+                          {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Ranking da Categoria Selecionada */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Crown className="w-5 h-5 text-yellow-500" />
+                      Ranking - {selectedRankingCategory === "Galáxia de reconhecimento" ? "Reconhecimento" : selectedRankingCategory}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {getCategoryRanking(selectedRankingCategory).length > 0 ? (
+                        getCategoryRanking(selectedRankingCategory).map((employee, index) => (
+                          <div
+                            key={employee.id}
+                            className={`flex items-center justify-between p-4 rounded-lg border ${
+                              index === 0 ? 'bg-yellow-50 border-yellow-200' :
+                              index === 1 ? 'bg-gray-50 border-gray-200' :
+                              index === 2 ? 'bg-orange-50 border-orange-200' :
+                              'bg-white border-gray-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm">
+                                {index === 0 && <Crown className="w-5 h-5 text-yellow-500" />}
+                                {index === 1 && <Medal className="w-5 h-5 text-gray-500" />}
+                                {index === 2 && <Medal className="w-5 h-5 text-orange-500" />}
+                                {index > 2 && <span className="text-gray-600">{employee.position}º</span>}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{employee.name}</p>
+                                <p className="text-sm text-gray-600">{employee.email}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-gray-900">
+                                {employee.categoryPoints} pts
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {selectedRankingCategory === "Vendas" && "🟢 Vendas"}
+                                {selectedRankingCategory === "Recuperação" && "🟠 Recuperação"}
+                                {selectedRankingCategory === "Atualização" && "🟣 Atualização"}
+                                {selectedRankingCategory === "Galáxia de reconhecimento" && "🟡 Reconhecimento"}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <Trophy className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500">
+                            Nenhum colaborador possui pontos em {selectedRankingCategory === "Galáxia de reconhecimento" ? "Reconhecimento" : selectedRankingCategory} ainda
+                          </p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Adicione figurinhas desta categoria para ver o ranking
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Resumo Geral */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Star className="w-5 h-5 text-blue-500" />
+                      Resumo Geral por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {defaultCategories.map((category) => {
+                        const ranking = getCategoryRanking(category)
+                        const totalPoints = ranking.reduce((sum, emp) => sum + emp.categoryPoints, 0)
+                        const participantes = ranking.length
+                        
+                        return (
+                          <div key={category} className="p-4 border rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              {category === "Vendas" && "🟢"}
+                              {category === "Recuperação" && "🟠"}
+                              {category === "Atualização" && "🟣"}
+                              {category === "Galáxia de reconhecimento" && "🟡"}
+                              <span className="font-medium text-sm">
+                                {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-2xl font-bold text-gray-900">{totalPoints}</p>
+                              <p className="text-xs text-gray-600">pontos totais</p>
+                              <p className="text-xs text-gray-500">{participantes} participantes</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

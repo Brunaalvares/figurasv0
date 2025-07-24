@@ -259,6 +259,46 @@ export default function AlbumPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Minha Posição nos Rankings */}
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    Minha Posição nos Rankings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {userData?.categoryPoints && Object.entries(userData.categoryPoints).map(([category, points]) => (
+                      <div key={category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          {category === "Vendas" && "🟢"}
+                          {category === "Recuperação" && "🟠"}
+                          {category === "Atualização" && "🟣"}
+                          {category === "Galáxia de reconhecimento" && "🟡"}
+                          <span className="font-medium text-sm">
+                            {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-900">{points} pts</p>
+                          {points > 0 ? (
+                            <p className="text-xs text-green-600">Participando</p>
+                          ) : (
+                            <p className="text-xs text-gray-400">Sem pontos</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-700 text-center">
+                      💡 <strong>Dica:</strong> Peça ao seu gestor para ver o ranking completo de cada categoria!
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
