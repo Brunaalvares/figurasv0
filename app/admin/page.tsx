@@ -636,6 +636,26 @@ export default function AdminPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      
+                      <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {defaultCategories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              <div className="flex items-center gap-2">
+                                {category === "Vendas" && "🟢"}
+                                {category === "Recuperação" && "🟠"}
+                                {category === "Atualização" && "🟣"}
+                                {category === "Galáxia de reconhecimento" && "🟡"}
+                                <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
                       <Select value={stickerPoints} onValueChange={setStickerPoints}>
                         <SelectTrigger>
                           <SelectValue placeholder="Pontuação da figurinha" />
