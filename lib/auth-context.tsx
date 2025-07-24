@@ -27,6 +27,13 @@ interface UserData {
   email: string
   role: "admin" | "employee"
   totalPoints: number
+  categoryPoints?: {
+    "Vendas": number
+    "Recuperação": number
+    "Atualização": number
+    "Galáxia de reconhecimento": number
+    [key: string]: number
+  }
   createdAt: string
 }
 
@@ -60,6 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: "marketing2@avalyst.com.br",
         role: "admin",
         totalPoints: 0,
+        categoryPoints: {
+          "Vendas": 0,
+          "Recuperação": 0,
+          "Atualização": 0,
+          "Galáxia de reconhecimento": 0
+        },
         createdAt: new Date().toISOString(),
       }
       
@@ -118,6 +131,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: user.email!,
             role: "employee",
             totalPoints: 0,
+            categoryPoints: {
+              "Vendas": 0,
+              "Recuperação": 0,
+              "Atualização": 0,
+              "Galáxia de reconhecimento": 0
+            },
             createdAt: new Date().toISOString(),
           }
           
@@ -169,6 +188,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: email,
         role: role,
         totalPoints: 0,
+        categoryPoints: {
+          "Vendas": 0,
+          "Recuperação": 0,
+          "Atualização": 0,
+          "Galáxia de reconhecimento": 0
+        },
         createdAt: new Date().toISOString(),
       }
 

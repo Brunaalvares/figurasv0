@@ -23,6 +23,13 @@ interface Employee {
   email: string
   totalPoints: number
   role: string
+  categoryPoints?: {
+    "Vendas": number
+    "Recuperação": number
+    "Atualização": number
+    "Galáxia de reconhecimento": number
+    [key: string]: number // Para categorias customizadas
+  }
 }
 
 interface CustomAchievement {
@@ -73,6 +80,18 @@ const defaultAchievements = [
 
 const pointValues = [5, 10, 15, 20, 25, 30]
 
+// Categorias padrão do sistema
+const defaultCategories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"]
+
+// Função para inicializar pontuações por categoria
+const initializeCategoryPoints = () => {
+  const points: { [key: string]: number } = {}
+  defaultCategories.forEach(category => {
+    points[category] = 0
+  })
+  return points
+}
+
 export default function AdminPage() {
   const { logout } = useAuth()
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -93,6 +112,8 @@ export default function AdminPage() {
   const [editEmployeeName, setEditEmployeeName] = useState("")
   const [editEmployeeEmail, setEditEmployeeEmail] = useState("")
   const [editEmployeePoints, setEditEmployeePoints] = useState("")
+  const [editCategoryPoints, setEditCategoryPoints] = useState<{[key: string]: string}>({})
+  const [showCategoryPoints, setShowCategoryPoints] = useState(false)
 
   // Estados para criar nova meta
   const [newAchievementName, setNewAchievementName] = useState("")
@@ -208,13 +229,14 @@ export default function AdminPage() {
       await signOut(secondaryAuth)
       
       // Dados para salvar
-      const userData = {
-        name,
-        email,
-        role: "employee",
-        totalPoints: 0,
-        createdAt: new Date().toISOString(),
-      }
+              const userData = {
+          name,
+          email,
+          role: "employee",
+          totalPoints: 0,
+          categoryPoints: initializeCategoryPoints(),
+          createdAt: new Date().toISOString(),
+        }
 
              // Salvar no Firestore (OBRIGATÓRIO para controle de pontos)
        await setDoc(doc(db, "users", uid), userData)
@@ -276,6 +298,21 @@ export default function AdminPage() {
     setEditEmployeeName(employee.name)
     setEditEmployeeEmail(employee.email)
     setEditEmployeePoints(employee.totalPoints.toString())
+    
+    // Carregar pontuações por categoria
+    const categoryPointsStr: {[key: string]: string} = {}
+    if (employee.categoryPoints) {
+      Object.keys(employee.categoryPoints).forEach(category => {
+        categoryPointsStr[category] = employee.categoryPoints![category].toString()
+      })
+    } else {
+      // Se não existir, inicializar com zeros
+      defaultCategories.forEach(category => {
+        categoryPointsStr[category] = "0"
+      })
+    }
+    setEditCategoryPoints(categoryPointsStr)
+    setShowCategoryPoints(false)
   }
 
   const closeEditEmployee = () => {
@@ -283,6 +320,8 @@ export default function AdminPage() {
     setEditEmployeeName("")
     setEditEmployeeEmail("")
     setEditEmployeePoints("")
+    setEditCategoryPoints({})
+    setShowCategoryPoints(false)
   }
 
   const handleEditEmployee = async () => {
@@ -308,11 +347,26 @@ export default function AdminPage() {
     try {
       console.log("🔄 Editando colaborador:", editingEmployee.id)
       
+      // Converter pontuações por categoria de string para number
+      const categoryPointsNum: {[key: string]: number} = {}
+      let calculatedTotal = 0
+      
+      Object.keys(editCategoryPoints).forEach(category => {
+        const points = parseInt(editCategoryPoints[category]) || 0
+        categoryPointsNum[category] = points
+        calculatedTotal += points
+      })
+      
+      // Se o usuário editou o total manualmente, usar esse valor
+      // Senão, usar a soma das categorias
+      const finalTotalPoints = showCategoryPoints ? calculatedTotal : newPoints
+      
       // Atualizar dados no Firestore
       await updateDoc(doc(db, "users", editingEmployee.id), {
         name: editEmployeeName.trim(),
         email: editEmployeeEmail.trim(),
-        totalPoints: newPoints,
+        totalPoints: finalTotalPoints,
+        categoryPoints: categoryPointsNum,
       })
 
       console.log("✅ Colaborador atualizado no Firestore")
@@ -341,7 +395,10 @@ export default function AdminPage() {
   }
 
   const handleAddSticker = async () => {
-    if (!selectedEmployee || !stickerPoints) return
+    if (!selectedEmployee || !stickerPoints || !selectedCategory) {
+      alert("Por favor, selecione o colaborador, categoria e pontuação.")
+      return
+    }
 
     try {
       const points = Number.parseInt(stickerPoints)
@@ -354,23 +411,27 @@ export default function AdminPage() {
         30: "🔥",
       }
 
-      // Adicionar figurinha
+      // Adicionar figurinha com categoria
       await addDoc(collection(db, "stickers"), {
         userId: selectedEmployee,
         points: points,
         emoji: stickerEmojis[points],
+        category: selectedCategory,
         earnedAt: new Date().toISOString(),
       })
 
-      // Atualizar pontos totais do usuário
+      // Atualizar pontos totais e pontos da categoria específica
+      const categoryField = `categoryPoints.${selectedCategory}`
       await updateDoc(doc(db, "users", selectedEmployee), {
         totalPoints: increment(points),
+        [categoryField]: increment(points),
       })
 
       setSelectedEmployee("")
       setStickerPoints("")
+      setSelectedCategory("")
       loadData()
-      alert("Figurinha adicionada com sucesso!")
+      alert(`Figurinha de ${selectedCategory} adicionada com sucesso! (+${points} pontos)`)
     } catch (error) {
       console.error("Erro ao adicionar figurinha:", error)
       alert("Erro ao adicionar figurinha")
@@ -776,7 +837,11 @@ export default function AdminPage() {
                         <tr className="border-b">
                           <th className="text-left py-3 px-4">Nome</th>
                           <th className="text-left py-3 px-4">Email</th>
-                          <th className="text-center py-3 px-4">Pontos Totais</th>
+                          <th className="text-center py-3 px-4">Total</th>
+                          <th className="text-center py-3 px-4">Vendas</th>
+                          <th className="text-center py-3 px-4">Recuperação</th>
+                          <th className="text-center py-3 px-4">Atualização</th>
+                          <th className="text-center py-3 px-4">Reconhecimento</th>
                           <th className="text-center py-3 px-4">Status</th>
                           <th className="text-center py-3 px-4">Ações</th>
                         </tr>
@@ -789,6 +854,26 @@ export default function AdminPage() {
                             <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                 {employee.totalPoints} pts
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-green-600">
+                                {employee.categoryPoints?.["Vendas"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-orange-600">
+                                {employee.categoryPoints?.["Recuperação"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-purple-600">
+                                {employee.categoryPoints?.["Atualização"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-yellow-600">
+                                {employee.categoryPoints?.["Galáxia de reconhecimento"] || 0}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-center">
@@ -851,20 +936,68 @@ export default function AdminPage() {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Pontos Totais
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={editEmployeePoints}
-                    onChange={(e) => setEditEmployeePoints(e.target.value)}
-                    disabled={loading}
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Ajuste a pontuação total do colaborador
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Pontuação
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCategoryPoints(!showCategoryPoints)}
+                      disabled={loading}
+                    >
+                      {showCategoryPoints ? "Edição Simples" : "Editar por Categoria"}
+                    </Button>
+                  </div>
+                  
+                  {!showCategoryPoints ? (
+                    <div>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={editEmployeePoints}
+                        onChange={(e) => setEditEmployeePoints(e.target.value)}
+                        disabled={loading}
+                      />
+                      <p className="text-sm text-gray-500 mt-1">
+                        Ajuste a pontuação total do colaborador
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-500">
+                        Edite as pontuações por categoria (o total será calculado automaticamente)
+                      </p>
+                      
+                      {defaultCategories.map((category) => (
+                        <div key={category}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={editCategoryPoints[category] || "0"}
+                            onChange={(e) => setEditCategoryPoints(prev => ({
+                              ...prev,
+                              [category]: e.target.value
+                            }))}
+                            disabled={loading}
+                            className="text-sm"
+                          />
+                        </div>
+                      ))}
+                      
+                      <div className="pt-2 border-t">
+                        <p className="text-sm font-medium text-gray-700">
+                          Total Calculado: {Object.values(editCategoryPoints).reduce((sum, val) => sum + (parseInt(val) || 0), 0)} pontos
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2 pt-4">
