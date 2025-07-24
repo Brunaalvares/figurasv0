@@ -103,7 +103,9 @@ export default function AdminPage() {
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
   const [selectedEmployee, setSelectedEmployee] = useState("")
   const [stickerPoints, setStickerPoints] = useState("")
+  const [stickerQuantity, setStickerQuantity] = useState("1")
   const [achievementDescription, setAchievementDescription] = useState("")
+  const [achievementQuantity, setAchievementQuantity] = useState("1")
   const [selectedCategory, setSelectedCategory] = useState("")
   const [selectedAchievement, setSelectedAchievement] = useState("")
 
@@ -412,13 +414,16 @@ export default function AdminPage() {
   }
 
   const handleAddSticker = async () => {
-    if (!selectedEmployee || !stickerPoints || !selectedCategory) {
-      alert("Por favor, selecione o colaborador, categoria e pontuação.")
+    if (!selectedEmployee || !stickerPoints || !selectedCategory || !stickerQuantity) {
+      alert("Por favor, preencha todos os campos.")
       return
     }
 
     try {
       const points = Number.parseInt(stickerPoints)
+      const quantity = Number.parseInt(stickerQuantity)
+      const totalPointsToAdd = points * quantity
+      
       const stickerEmojis: Record<number, string> = {
         5: "⭐",
         10: "🏆",
@@ -428,27 +433,30 @@ export default function AdminPage() {
         30: "🔥",
       }
 
-      // Adicionar figurinha com categoria
-      await addDoc(collection(db, "stickers"), {
-        userId: selectedEmployee,
-        points: points,
-        emoji: stickerEmojis[points],
-        category: selectedCategory,
-        earnedAt: new Date().toISOString(),
-      })
+      // Adicionar múltiplas figurinhas
+      for (let i = 0; i < quantity; i++) {
+        await addDoc(collection(db, "stickers"), {
+          userId: selectedEmployee,
+          points: points,
+          emoji: stickerEmojis[points],
+          category: selectedCategory,
+          earnedAt: new Date().toISOString(),
+        })
+      }
 
       // Atualizar pontos totais e pontos da categoria específica
       const categoryField = `categoryPoints.${selectedCategory}`
       await updateDoc(doc(db, "users", selectedEmployee), {
-        totalPoints: increment(points),
-        [categoryField]: increment(points),
+        totalPoints: increment(totalPointsToAdd),
+        [categoryField]: increment(totalPointsToAdd),
       })
 
       setSelectedEmployee("")
       setStickerPoints("")
+      setStickerQuantity("1")
       setSelectedCategory("")
       loadData()
-      alert(`Figurinha de ${selectedCategory} adicionada com sucesso! (+${points} pontos)`)
+      alert(`${quantity}x Figurinha de ${selectedCategory} adicionada com sucesso! (+${totalPointsToAdd} pontos)`)
     } catch (error) {
       console.error("Erro ao adicionar figurinha:", error)
       alert("Erro ao adicionar figurinha")
@@ -456,25 +464,33 @@ export default function AdminPage() {
   }
 
   const handleAddAchievement = async () => {
-    if (!selectedEmployee || !selectedAchievement) return
+    if (!selectedEmployee || !selectedAchievement || !achievementQuantity) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
 
     try {
       const achievement = JSON.parse(selectedAchievement)
+      const quantity = Number.parseInt(achievementQuantity)
 
-      await addDoc(collection(db, "achievements"), {
-        userId: selectedEmployee,
-        name: achievement.name,
-        category: achievement.category,
-        description: achievementDescription,
-        image: achievement.image,
-        earnedAt: new Date().toISOString(),
-      })
+      // Adicionar múltiplas metas
+      for (let i = 0; i < quantity; i++) {
+        await addDoc(collection(db, "achievements"), {
+          userId: selectedEmployee,
+          name: achievement.name,
+          category: achievement.category,
+          description: achievementDescription,
+          image: achievement.image,
+          earnedAt: new Date().toISOString(),
+        })
+      }
 
       setSelectedEmployee("")
       setSelectedCategory("")
       setSelectedAchievement("")
       setAchievementDescription("")
-      alert("Meta adicionada com sucesso!")
+      setAchievementQuantity("1")
+      alert(`${quantity}x Meta "${achievement.name}" adicionada com sucesso!`)
     } catch (error) {
       console.error("Erro ao adicionar meta:", error)
       alert("Erro ao adicionar meta")
@@ -671,6 +687,31 @@ export default function AdminPage() {
                           <SelectItem value="30">🔥 30 pontos</SelectItem>
                         </SelectContent>
                       </Select>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 mb-1 block">
+                          Quantidade de figurinhas
+                        </label>
+                        <Select value={stickerQuantity} onValueChange={setStickerQuantity}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Quantidade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 figurinha</SelectItem>
+                            <SelectItem value="2">2 figurinhas</SelectItem>
+                            <SelectItem value="3">3 figurinhas</SelectItem>
+                            <SelectItem value="4">4 figurinhas</SelectItem>
+                            <SelectItem value="5">5 figurinhas</SelectItem>
+                            <SelectItem value="10">10 figurinhas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {stickerPoints && stickerQuantity && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Total: {Number.parseInt(stickerPoints) * Number.parseInt(stickerQuantity)} pontos
+                          </p>
+                        )}
+                      </div>
+                      
                       <Button onClick={handleAddSticker} className="w-full">
                         Adicionar Figurinha
                       </Button>
@@ -750,6 +791,31 @@ export default function AdminPage() {
                         value={achievementDescription}
                         onChange={(e) => setAchievementDescription(e.target.value)}
                       />
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 mb-1 block">
+                          Quantidade de metas conquistadas
+                        </label>
+                        <Select value={achievementQuantity} onValueChange={setAchievementQuantity}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Quantidade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 meta</SelectItem>
+                            <SelectItem value="2">2 metas</SelectItem>
+                            <SelectItem value="3">3 metas</SelectItem>
+                            <SelectItem value="4">4 metas</SelectItem>
+                            <SelectItem value="5">5 metas</SelectItem>
+                            <SelectItem value="10">10 metas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {selectedAchievement && achievementQuantity && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Será registrado {achievementQuantity}x a meta selecionada
+                          </p>
+                        )}
+                      </div>
+                      
                       <Button onClick={handleAddAchievement} className="w-full">
                         Registrar Meta
                       </Button>
