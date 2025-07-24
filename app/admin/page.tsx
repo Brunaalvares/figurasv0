@@ -84,23 +84,11 @@ const pointValues = [5, 10, 15, 20, 25, 30]
 const defaultCategories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"]
 
 // Função para inicializar pontuações por categoria
-const initializeCategoryPoints = (includeCustom = false, customCategories: string[] = []) => {
+const initializeCategoryPoints = () => {
   const points: { [key: string]: number } = {}
-  
-  // Adicionar categorias padrão
   defaultCategories.forEach(category => {
     points[category] = 0
   })
-  
-  // Adicionar categorias customizadas se solicitado
-  if (includeCustom) {
-    customCategories.forEach(category => {
-      if (!points[category]) {
-        points[category] = 0
-      }
-    })
-  }
-  
   return points
 }
 
@@ -130,12 +118,7 @@ export default function AdminPage() {
   // Estados para rankings
   const [selectedRankingCategory, setSelectedRankingCategory] = useState("Vendas")
 
-  // Função para obter todas as categorias (padrão + customizadas)
-  const getAllCategories = () => {
-    const customCategories = [...new Set(customAchievements.map(achievement => achievement.category))]
-    const allCategories = [...defaultCategories, ...customCategories]
-    return [...new Set(allCategories)] // Remove duplicatas
-  }
+
 
   // Função para obter ranking de uma categoria
   const getCategoryRanking = (category: string) => {
@@ -263,15 +246,12 @@ export default function AdminPage() {
       await signOut(secondaryAuth)
       
       // Dados para salvar
-              // Obter categorias customizadas existentes
-        const existingCustomCategories = [...new Set(customAchievements.map(achievement => achievement.category))]
-        
-        const userData = {
+              const userData = {
           name,
           email,
           role: "employee",
           totalPoints: 0,
-          categoryPoints: initializeCategoryPoints(true, existingCustomCategories),
+          categoryPoints: initializeCategoryPoints(),
           createdAt: new Date().toISOString(),
         }
 
@@ -664,7 +644,6 @@ export default function AdminPage() {
                           <SelectValue placeholder="Selecionar categoria" />
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Categorias Padrão */}
                           {defaultCategories.map((category) => (
                             <SelectItem key={category} value={category}>
                               <div className="flex items-center gap-2">
@@ -673,23 +652,6 @@ export default function AdminPage() {
                                 {category === "Atualização" && "🟣"}
                                 {category === "Galáxia de reconhecimento" && "🟡"}
                                 <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                          
-                          {/* Separador se houver categorias customizadas */}
-                          {customAchievements.length > 0 && (
-                            <div className="px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100">
-                              Metas Customizadas
-                            </div>
-                          )}
-                          
-                          {/* Categorias Customizadas */}
-                          {[...new Set(customAchievements.map(achievement => achievement.category))].map((category) => (
-                            <SelectItem key={`custom-${category}`} value={category}>
-                              <div className="flex items-center gap-2">
-                                <span className="text-purple-600">🎯</span>
-                                <span>{category}</span>
                               </div>
                             </SelectItem>
                           ))}
@@ -820,9 +782,15 @@ export default function AdminPage() {
                           <SelectValue placeholder="Categoria" />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((category) => (
+                          {defaultCategories.map((category) => (
                             <SelectItem key={category} value={category}>
-                              {category}
+                              <div className="flex items-center gap-2">
+                                {category === "Vendas" && "🟢"}
+                                {category === "Recuperação" && "🟠"}
+                                {category === "Atualização" && "🟣"}
+                                {category === "Galáxia de reconhecimento" && "🟡"}
+                                <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -989,7 +957,6 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {/* Categorias Padrão */}
                       {defaultCategories.map((category) => (
                         <Button
                           key={category}
@@ -1003,20 +970,6 @@ export default function AdminPage() {
                           {category === "Atualização" && "🟣"}
                           {category === "Galáxia de reconhecimento" && "🟡"}
                           {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
-                        </Button>
-                      ))}
-                      
-                      {/* Categorias Customizadas */}
-                      {[...new Set(customAchievements.map(achievement => achievement.category))].map((category) => (
-                        <Button
-                          key={`custom-${category}`}
-                          variant={selectedRankingCategory === category ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setSelectedRankingCategory(category)}
-                          className="flex items-center gap-2"
-                        >
-                          <span className="text-purple-600">🎯</span>
-                          {category}
                         </Button>
                       ))}
                     </div>
@@ -1094,7 +1047,6 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Categorias Padrão */}
                       {defaultCategories.map((category) => {
                         const ranking = getCategoryRanking(category)
                         const totalPoints = ranking.reduce((sum, emp) => sum + emp.categoryPoints, 0)
@@ -1115,29 +1067,6 @@ export default function AdminPage() {
                               <p className="text-2xl font-bold text-gray-900">{totalPoints}</p>
                               <p className="text-xs text-gray-600">pontos totais</p>
                               <p className="text-xs text-gray-500">{participantes} participantes</p>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      
-                      {/* Categorias Customizadas */}
-                      {[...new Set(customAchievements.map(achievement => achievement.category))].map((category) => {
-                        const ranking = getCategoryRanking(category)
-                        const totalPoints = ranking.reduce((sum, emp) => sum + emp.categoryPoints, 0)
-                        const participantes = ranking.length
-                        
-                        return (
-                          <div key={`custom-${category}`} className="p-4 border rounded-lg border-purple-200 bg-purple-50">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-purple-600">🎯</span>
-                              <span className="font-medium text-sm text-purple-800">
-                                {category}
-                              </span>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-2xl font-bold text-purple-900">{totalPoints}</p>
-                              <p className="text-xs text-purple-600">pontos totais</p>
-                              <p className="text-xs text-purple-500">{participantes} participantes</p>
                             </div>
                           </div>
                         )
