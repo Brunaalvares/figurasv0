@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc } from "firebase/firestore"
+import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc, query, where } from "firebase/firestore"
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
 import { initializeApp } from "firebase/app"
 import { getAuth } from "firebase/auth"
@@ -119,6 +119,13 @@ export default function AdminPage() {
   
   // Estados para rankings
   const [selectedRankingCategory, setSelectedRankingCategory] = useState("Vendas")
+
+  // Estados para remoção
+  const [selectedEmployeeForRemoval, setSelectedEmployeeForRemoval] = useState("")
+  const [removalType, setRemovalType] = useState<"sticker" | "achievement" | "">("")
+  const [userStickers, setUserStickers] = useState<any[]>([])
+  const [userAchievements, setUserAchievements] = useState<any[]>([])
+  const [selectedItemToRemove, setSelectedItemToRemove] = useState("")
 
 
 
@@ -534,6 +541,97 @@ export default function AdminPage() {
     }
   }
 
+  // Funções para remoção de figurinhas e metas
+  const loadUserItems = async (userId: string) => {
+    if (!userId) return
+
+    try {
+      // Carregar figurinhas do usuário
+      const stickersQuery = query(collection(db, "stickers"), where("userId", "==", userId))
+      const stickersSnapshot = await getDocs(stickersQuery)
+      const stickers = stickersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+      }))
+      setUserStickers(stickers)
+
+      // Carregar metas do usuário
+      const achievementsQuery = query(collection(db, "achievements"), where("userId", "==", userId))
+      const achievementsSnapshot = await getDocs(achievementsQuery)
+      const achievements = achievementsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+      }))
+      setUserAchievements(achievements)
+    } catch (error) {
+      console.error("Erro ao carregar itens do usuário:", error)
+    }
+  }
+
+  const handleRemoveSticker = async () => {
+    if (!selectedItemToRemove) {
+      alert("Por favor, selecione uma figurinha para remover.")
+      return
+    }
+
+    if (!confirm("Tem certeza que deseja remover esta figurinha? Esta ação não pode ser desfeita.")) {
+      return
+    }
+
+    try {
+      const stickerToRemove = userStickers.find(s => s.id === selectedItemToRemove)
+      if (!stickerToRemove) return
+
+      // Remover figurinha do banco
+      await deleteDoc(doc(db, "stickers", selectedItemToRemove))
+
+      // Atualizar pontos do usuário (subtrair)
+      const categoryField = `categoryPoints.${stickerToRemove.category}`
+      await updateDoc(doc(db, "users", selectedEmployeeForRemoval), {
+        totalPoints: increment(-stickerToRemove.points),
+        [categoryField]: increment(-stickerToRemove.points),
+      })
+
+      // Recarregar dados
+      await loadUserItems(selectedEmployeeForRemoval)
+      await loadData()
+
+      setSelectedItemToRemove("")
+      alert(`Figurinha removida com sucesso! (-${stickerToRemove.points} pontos)`)
+    } catch (error) {
+      console.error("Erro ao remover figurinha:", error)
+      alert("Erro ao remover figurinha")
+    }
+  }
+
+  const handleRemoveAchievement = async () => {
+    if (!selectedItemToRemove) {
+      alert("Por favor, selecione uma meta para remover.")
+      return
+    }
+
+    if (!confirm("Tem certeza que deseja remover esta meta conquistada? Esta ação não pode ser desfeita.")) {
+      return
+    }
+
+    try {
+      // Remover meta do banco
+      await deleteDoc(doc(db, "achievements", selectedItemToRemove))
+
+      // Recarregar dados
+      await loadUserItems(selectedEmployeeForRemoval)
+      await loadData()
+
+      setSelectedItemToRemove("")
+      alert("Meta removida com sucesso!")
+    } catch (error) {
+      console.error("Erro ao remover meta:", error)
+      alert("Erro ao remover meta")
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
   }
@@ -819,6 +917,175 @@ export default function AdminPage() {
                       <Button onClick={handleAddAchievement} className="w-full">
                         Registrar Meta
                       </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Remover Figurinhas/Metas */}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                      <CardContent className="flex items-center justify-center p-6">
+                        <div className="text-center">
+                          <Trash2 className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                          <h3 className="font-semibold text-gray-900">Remover Itens</h3>
+                          <p className="text-sm text-gray-600">Corrigir erros</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Remover Figurinhas ou Metas</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <Select 
+                        value={selectedEmployeeForRemoval} 
+                        onValueChange={(value) => {
+                          setSelectedEmployeeForRemoval(value)
+                          setRemovalType("")
+                          setSelectedItemToRemove("")
+                          loadUserItems(value)
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar colaborador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id}>
+                              {employee.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {selectedEmployeeForRemoval && (
+                        <Select value={removalType} onValueChange={(value: "sticker" | "achievement") => {
+                          setRemovalType(value)
+                          setSelectedItemToRemove("")
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="O que deseja remover?" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sticker">🏆 Figurinhas ({userStickers.length})</SelectItem>
+                            <SelectItem value="achievement">🎯 Metas ({userAchievements.length})</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      {removalType === "sticker" && userStickers.length > 0 && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">
+                            Selecionar figurinha para remover
+                          </label>
+                          <Select value={selectedItemToRemove} onValueChange={setSelectedItemToRemove}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Escolher figurinha" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {userStickers.map((sticker) => (
+                                <SelectItem key={sticker.id} value={sticker.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{sticker.emoji}</span>
+                                    <span>{sticker.points} pontos</span>
+                                    <span className="text-gray-500">({sticker.category})</span>
+                                    <span className="text-xs text-gray-400">{sticker.earnedAt}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedItemToRemove && (
+                            <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                              <p className="text-sm text-red-700">
+                                ⚠️ Esta figurinha será removida e os pontos serão subtraídos
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {removalType === "achievement" && userAchievements.length > 0 && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">
+                            Selecionar meta para remover
+                          </label>
+                          <Select value={selectedItemToRemove} onValueChange={setSelectedItemToRemove}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Escolher meta" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {userAchievements.map((achievement) => (
+                                <SelectItem key={achievement.id} value={achievement.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{achievement.image}</span>
+                                    <span>{achievement.name}</span>
+                                    <span className="text-gray-500">({achievement.category})</span>
+                                    <span className="text-xs text-gray-400">{achievement.earnedAt}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedItemToRemove && (
+                            <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                              <p className="text-sm text-red-700">
+                                ⚠️ Esta meta conquistada será removida permanentemente
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {removalType === "sticker" && userStickers.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          Este colaborador não possui figurinhas para remover
+                        </p>
+                      )}
+
+                      {removalType === "achievement" && userAchievements.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          Este colaborador não possui metas para remover
+                        </p>
+                      )}
+
+                      {selectedItemToRemove && (
+                        <div className="flex gap-2">
+                          {removalType === "sticker" && (
+                            <Button 
+                              onClick={handleRemoveSticker} 
+                              variant="destructive" 
+                              className="flex-1"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover Figurinha
+                            </Button>
+                          )}
+                          {removalType === "achievement" && (
+                            <Button 
+                              onClick={handleRemoveAchievement} 
+                              variant="destructive" 
+                              className="flex-1"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover Meta
+                            </Button>
+                          )}
+                          <Button 
+                            onClick={() => {
+                              setSelectedItemToRemove("")
+                              setRemovalType("")
+                              setSelectedEmployeeForRemoval("")
+                            }}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>
