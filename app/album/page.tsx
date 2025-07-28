@@ -31,6 +31,13 @@ interface UserData {
   name: string
   email: string
   totalPoints: number
+  categoryPoints?: {
+    "Vendas": number
+    "Recuperação": number
+    "Atualização": number
+    "Galáxia de reconhecimento": number
+    [key: string]: number
+  }
 }
 
 export default function AlbumPage() {
@@ -171,7 +178,38 @@ export default function AlbumPage() {
                     })}
                   </div>
 
-                  <div className="mt-6 p-4 bg-gradient-to-r from-blue-100 to-green-100 rounded-lg">
+                  {/* Pontuações por Categoria */}
+                  <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Pontuação por Categoria</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex justify-between items-center p-2 bg-white rounded border">
+                        <span className="text-xs font-medium text-green-600">🟢 Vendas</span>
+                        <span className="text-sm font-bold text-green-700">
+                          {userData?.categoryPoints?.["Vendas"] || 0}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 bg-white rounded border">
+                        <span className="text-xs font-medium text-orange-600">🟠 Recuperação</span>
+                        <span className="text-sm font-bold text-orange-700">
+                          {userData?.categoryPoints?.["Recuperação"] || 0}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 bg-white rounded border">
+                        <span className="text-xs font-medium text-purple-600">🟣 Atualização</span>
+                        <span className="text-sm font-bold text-purple-700">
+                          {userData?.categoryPoints?.["Atualização"] || 0}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 bg-white rounded border">
+                        <span className="text-xs font-medium text-yellow-600">🟡 Reconhecimento</span>
+                        <span className="text-sm font-bold text-yellow-700">
+                          {userData?.categoryPoints?.["Galáxia de reconhecimento"] || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-4 bg-gradient-to-r from-blue-100 to-green-100 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-700">Total de Pontos</p>
@@ -218,6 +256,50 @@ export default function AlbumPage() {
                         </p>
                       </div>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Minha Posição nos Rankings */}
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    Minha Posição nos Rankings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"].map((category) => {
+                      const points = userData?.categoryPoints?.[category] || 0
+                      
+                      return (
+                        <div key={category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            {category === "Vendas" && "🟢"}
+                            {category === "Recuperação" && "🟠"}
+                            {category === "Atualização" && "🟣"}
+                            {category === "Galáxia de reconhecimento" && "🟡"}
+                            <span className="font-medium text-sm">
+                              {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-gray-900">{points} pts</p>
+                            {points > 0 ? (
+                              <p className="text-xs text-green-600">Participando</p>
+                            ) : (
+                              <p className="text-xs text-gray-400">Sem pontos</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-700 text-center">
+                      💡 <strong>Dica:</strong> Peça ao seu gestor para ver o ranking completo de cada categoria!
+                    </p>
                   </div>
                 </CardContent>
               </Card>

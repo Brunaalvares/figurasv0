@@ -10,10 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc } from "firebase/firestore"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { collection, getDocs, addDoc, doc, updateDoc, increment, deleteDoc, setDoc, getDoc, query, where } from "firebase/firestore"
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth"
+import { initializeApp } from "firebase/app"
+import { getAuth } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
-import { Users, Plus, Award, Star, LogOut, Target, Trash2 } from "lucide-react"
+import { Users, Plus, Award, Star, LogOut, Target, Trash2, Edit, Trophy, Crown, Medal } from "lucide-react"
 
 interface Employee {
   id: string
@@ -21,6 +23,13 @@ interface Employee {
   email: string
   totalPoints: number
   role: string
+  categoryPoints?: {
+    "Vendas": number
+    "Recuperação": number
+    "Atualização": number
+    "Galáxia de reconhecimento": number
+    [key: string]: number // Para categorias customizadas
+  }
 }
 
 interface CustomAchievement {
@@ -67,9 +76,25 @@ const defaultAchievements = [
   { name: "Supernova da Inovação", category: "Galáxia de reconhecimento", image: "💡" },
   { name: "Satélite de conexão", category: "Galáxia de reconhecimento", image: "🛰️" },
   { name: "Figurinha DunkLee", category: "Galáxia de reconhecimento", image: "🏆" },
+
+   //Pré-vendas
+  { name:"Número de Reuniões", category: "Pré-vendas", image: "📅" },
+  { name: "Superação da Meta de Faturamento", category: "Pré-vendas", image: "💰" },
 ]
 
 const pointValues = [5, 10, 15, 20, 25, 30]
+
+// Categorias padrão do sistema
+const defaultCategories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento", "Pré-vendas"]
+
+// Função para inicializar pontuações por categoria
+const initializeCategoryPoints = () => {
+  const points: { [key: string]: number } = {}
+  defaultCategories.forEach(category => {
+    points[category] = 0
+  })
+  return points
+}
 
 export default function AdminPage() {
   const { logout } = useAuth()
@@ -82,9 +107,41 @@ export default function AdminPage() {
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
   const [selectedEmployee, setSelectedEmployee] = useState("")
   const [stickerPoints, setStickerPoints] = useState("")
+  const [stickerQuantity, setStickerQuantity] = useState("1")
   const [achievementDescription, setAchievementDescription] = useState("")
+  const [achievementQuantity, setAchievementQuantity] = useState("1")
   const [selectedCategory, setSelectedCategory] = useState("")
   const [selectedAchievement, setSelectedAchievement] = useState("")
+
+  // Estados para edição de colaborador
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [editEmployeeName, setEditEmployeeName] = useState("")
+  const [editEmployeeEmail, setEditEmployeeEmail] = useState("")
+  const [editEmployeePoints, setEditEmployeePoints] = useState("")
+  const [editCategoryPoints, setEditCategoryPoints] = useState<{[key: string]: string}>({})
+  const [showCategoryPoints, setShowCategoryPoints] = useState(false)
+  
+  // Estados para rankings
+  const [selectedRankingCategory, setSelectedRankingCategory] = useState("Vendas")
+
+  // Estados para remoção
+const [selectedEmployeeForRemoval, setSelectedEmployeeForRemoval] = useState("")
+const [removalType, setRemovalType] = useState<"sticker" | "achievement" | "">("")
+const [userStickers, setUserStickers] = useState<any[]>([])
+const [userAchievements, setUserAchievements] = useState<any[]>([])
+const [selectedItemToRemove, setSelectedItemToRemove] = useState("")
+
+  // Função para obter ranking de uma categoria
+  const getCategoryRanking = (category: string) => {
+    return employees
+      .filter(emp => emp.categoryPoints && emp.categoryPoints[category] > 0)
+      .sort((a, b) => (b.categoryPoints?.[category] || 0) - (a.categoryPoints?.[category] || 0))
+      .map((emp, index) => ({
+        ...emp,
+        position: index + 1,
+        categoryPoints: emp.categoryPoints?.[category] || 0
+      }))
+  }
 
   // Estados para criar nova meta
   const [newAchievementName, setNewAchievementName] = useState("")
@@ -92,7 +149,7 @@ export default function AdminPage() {
   const [newAchievementImage, setNewAchievementImage] = useState("")
   const [newAchievementDescription, setNewAchievementDescription] = useState("")
 
-  const categories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"]
+  const categories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento", "Pré-vendas"]
   const emojiOptions = [
     "🏢",
     "🏬",
@@ -134,13 +191,104 @@ export default function AdminPage() {
     loadData()
   }, [])
 
+  // FUNÇÕES PARA REMOÇÃO
+const loadUserItems = async (userId: string) => {
+  if (!userId) return
+
+  try {
+    // Carregar figurinhas do usuário
+    const stickersQuery = query(collection(db, "stickers"), where("userId", "==", userId))
+    const stickersSnapshot = await getDocs(stickersQuery)
+    const stickers = stickersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+    }))
+    setUserStickers(stickers)
+
+    // Carregar metas do usuário
+    const achievementsQuery = query(collection(db, "achievements"), where("userId", "==", userId))
+    const achievementsSnapshot = await getDocs(achievementsQuery)
+    const achievements = achievementsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+    }))
+    setUserAchievements(achievements)
+  } catch (error) {
+    console.error("Erro ao carregar itens do usuário:", error)
+  }
+}
+
+const handleRemoveSticker = async () => {
+  if (!selectedItemToRemove) {
+    alert("Por favor, selecione uma figurinha para remover.")
+    return
+  }
+
+  if (!confirm("Tem certeza que deseja remover esta figurinha? Esta ação não pode ser desfeita.")) {
+    return
+  }
+
+  try {
+    const stickerToRemove = userStickers.find(s => s.id === selectedItemToRemove)
+    if (!stickerToRemove) return
+
+    // Remover figurinha do banco
+    await deleteDoc(doc(db, "stickers", selectedItemToRemove))
+
+    // Atualizar pontos do usuário (subtrair)
+    const categoryField = `categoryPoints.${stickerToRemove.category}`
+    await updateDoc(doc(db, "users", selectedEmployeeForRemoval), {
+      totalPoints: increment(-stickerToRemove.points),
+      [categoryField]: increment(-stickerToRemove.points),
+    })
+
+    // Recarregar dados
+    await loadUserItems(selectedEmployeeForRemoval)
+    await loadData()
+
+    setSelectedItemToRemove("")
+    alert(`Figurinha removida com sucesso! (-${stickerToRemove.points} pontos)`)
+  } catch (error) {
+    console.error("Erro ao remover figurinha:", error)
+    alert("Erro ao remover figurinha")
+  }
+}
+
+const handleRemoveAchievement = async () => {
+  if (!selectedItemToRemove) {
+    alert("Por favor, selecione uma meta para remover.")
+    return
+  }
+
+  if (!confirm("Tem certeza que deseja remover esta meta conquistada? Esta ação não pode ser desfeita.")) {
+    return
+  }
+
+  try {
+    // Remover meta do banco
+    await deleteDoc(doc(db, "achievements", selectedItemToRemove))
+
+    // Recarregar dados
+    await loadUserItems(selectedEmployeeForRemoval)
+    await loadData()
+
+    setSelectedItemToRemove("")
+    alert("Meta removida com sucesso!")
+  } catch (error) {
+    console.error("Erro ao remover meta:", error)
+    alert("Erro ao remover meta")
+  }
+}
+
   const loadData = async () => {
     try {
       // Carregar colaboradores
       const usersSnapshot = await getDocs(collection(db, "users"))
       const employeesList = usersSnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((user) => user.role === "employee") as Employee[]
+        .map((doc) => ({ id: doc.id, ...doc.data() } as Employee))
+        .filter((user) => user.role === "employee")
       setEmployees(employeesList)
 
       // Carregar metas customizadas
@@ -158,36 +306,224 @@ export default function AdminPage() {
   }
 
   const handleAddEmployee = async () => {
-    if (!newEmployeeName || !newEmployeeEmail) return
+    // Validação
+    if (!newEmployeeName?.trim() || !newEmployeeEmail?.trim()) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newEmployeeEmail.trim())) {
+      alert("Email inválido.")
+      return
+    }
+
+    setLoading(true)
 
     try {
-      // Criar usuário no Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, newEmployeeEmail, "senha123")
+      const name = newEmployeeName.trim()
+      const email = newEmployeeEmail.trim()
+      
+      console.log("🚀 Criando colaborador:", { name, email })
+      
+      // Criar instância separada do Firebase Auth para não deslogar o admin
+      const secondaryApp = initializeApp({
+        apiKey: "AIzaSyD995cU7-SuyTbAME9W8SMrloSvhWRLTbo",
+        authDomain: "sistema-figuras.firebaseapp.com",
+        projectId: "sistema-figuras",
+        storageBucket: "sistema-figuras.firebasestorage.app",
+        messagingSenderId: "110106643382",
+        appId: "1:110106643382:web:23de36713a98f4a49a4f17",
+      }, "secondary")
+      
+      const secondaryAuth = getAuth(secondaryApp)
+      
+      // Criar usuário na instância secundária (não afeta a sessão do admin)
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, "senha123")
+      const uid = userCredential.user.uid
+      
+      console.log("✅ Usuário criado:", uid)
+      
+      // Deslogar da instância secundária para limpar
+      await signOut(secondaryAuth)
+      
+      // Dados para salvar
+              const userData = {
+          name,
+          email,
+          role: "employee",
+          totalPoints: 0,
+          categoryPoints: initializeCategoryPoints(),
+          createdAt: new Date().toISOString(),
+        }
 
-      // Adicionar dados do usuário no Firestore
-      await addDoc(collection(db, "users"), {
-        name: newEmployeeName,
-        email: newEmployeeEmail,
-        role: "employee",
-        totalPoints: 0,
-        createdAt: new Date().toISOString(),
+             // Salvar no Firestore (OBRIGATÓRIO para controle de pontos)
+       await setDoc(doc(db, "users", uid), userData)
+       console.log("✅ Salvo no Firestore")
+
+       // Verificar se foi salvo corretamente
+       const checkDoc = await getDoc(doc(db, "users", uid))
+       if (!checkDoc.exists()) {
+         throw new Error("Falha ao salvar no Firestore - colaborador não pode receber pontos")
+       }
+
+       // Recarregar dados do servidor para garantir sincronização
+       await loadData()
+       
+       // Limpar campos
+       setNewEmployeeName("")
+       setNewEmployeeEmail("")
+       
+       console.log("✅ Colaborador adicionado e sincronizado")
+       alert(`✅ Colaborador "${name}" criado com sucesso!\nEmail: ${email}\nSenha: senha123\n\nO colaborador já pode receber figurinhas e pontos!`)
+      
+    } catch (error: any) {
+      console.error("❌ Erro:", error)
+      
+      let msg = "Erro desconhecido"
+      let instructions = ""
+      
+      if (error.code === "auth/email-already-in-use") {
+        msg = "Email já está em uso"
+        instructions = "Use um email diferente."
+      } else if (error.code === "auth/invalid-email") {
+        msg = "Email inválido"
+        instructions = "Verifique o formato do email."
+      } else if (error.code === "auth/weak-password") {
+        msg = "Senha muito fraca"
+        instructions = "A senha padrão 'senha123' deveria funcionar."
+      } else if (error.code === "permission-denied") {
+        msg = "Erro de permissão no Firestore"
+        instructions = "SOLUÇÃO:\n1. Execute: npm run firestore:rules\n2. Copie o conteúdo do arquivo firestore.rules\n3. Cole no Firebase Console → Firestore → Rules → Publish"
+      } else if (error.message?.includes("Falha ao salvar no Firestore")) {
+        msg = "Colaborador não foi salvo no banco de dados"
+        instructions = "Verifique se as regras do Firestore estão configuradas corretamente."
+      } else {
+        msg = error.message || "Erro ao criar colaborador"
+      }
+      
+      const fullMessage = instructions 
+        ? `❌ Erro: ${msg}\n\n${instructions}`
+        : `❌ Erro: ${msg}`
+      
+      alert(fullMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openEditEmployee = (employee: Employee) => {
+    setEditingEmployee(employee)
+    setEditEmployeeName(employee.name)
+    setEditEmployeeEmail(employee.email)
+    setEditEmployeePoints(employee.totalPoints.toString())
+    
+    // Carregar pontuações por categoria
+    const categoryPointsStr: {[key: string]: string} = {}
+    if (employee.categoryPoints) {
+      Object.keys(employee.categoryPoints).forEach(category => {
+        categoryPointsStr[category] = employee.categoryPoints![category].toString()
+      })
+    } else {
+      // Se não existir, inicializar com zeros
+      defaultCategories.forEach(category => {
+        categoryPointsStr[category] = "0"
+      })
+    }
+    setEditCategoryPoints(categoryPointsStr)
+    setShowCategoryPoints(false)
+  }
+
+  const closeEditEmployee = () => {
+    setEditingEmployee(null)
+    setEditEmployeeName("")
+    setEditEmployeeEmail("")
+    setEditEmployeePoints("")
+    setEditCategoryPoints({})
+    setShowCategoryPoints(false)
+  }
+
+  const handleEditEmployee = async () => {
+    if (!editingEmployee || !editEmployeeName.trim() || !editEmployeeEmail.trim()) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(editEmployeeEmail.trim())) {
+      alert("Email inválido.")
+      return
+    }
+
+    const newPoints = parseInt(editEmployeePoints) || 0
+    if (newPoints < 0) {
+      alert("Pontos não podem ser negativos.")
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      console.log("🔄 Editando colaborador:", editingEmployee.id)
+      
+      // Converter pontuações por categoria de string para number
+      const categoryPointsNum: {[key: string]: number} = {}
+      let calculatedTotal = 0
+      
+      Object.keys(editCategoryPoints).forEach(category => {
+        const points = parseInt(editCategoryPoints[category]) || 0
+        categoryPointsNum[category] = points
+        calculatedTotal += points
+      })
+      
+      // Se o usuário editou o total manualmente, usar esse valor
+      // Senão, usar a soma das categorias
+      const finalTotalPoints = showCategoryPoints ? calculatedTotal : newPoints
+      
+      // Atualizar dados no Firestore
+      await updateDoc(doc(db, "users", editingEmployee.id), {
+        name: editEmployeeName.trim(),
+        email: editEmployeeEmail.trim(),
+        totalPoints: finalTotalPoints,
+        categoryPoints: categoryPointsNum,
       })
 
-      setNewEmployeeName("")
-      setNewEmployeeEmail("")
-      loadData()
-      alert("Colaborador adicionado com sucesso!")
-    } catch (error) {
-      console.error("Erro ao adicionar colaborador:", error)
-      alert("Erro ao adicionar colaborador")
+      console.log("✅ Colaborador atualizado no Firestore")
+
+      // Recarregar dados
+      await loadData()
+      
+      closeEditEmployee()
+      
+      alert(`✅ Colaborador "${editEmployeeName.trim()}" atualizado com sucesso!`)
+      
+    } catch (error: any) {
+      console.error("❌ Erro ao editar colaborador:", error)
+      
+      let msg = "Erro desconhecido"
+      if (error.code === "permission-denied") {
+        msg = "Erro de permissão no Firestore"
+      } else {
+        msg = error.message || "Erro ao editar colaborador"
+      }
+      
+      alert(`❌ Erro: ${msg}`)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleAddSticker = async () => {
-    if (!selectedEmployee || !stickerPoints) return
+    if (!selectedEmployee || !stickerPoints || !selectedCategory || !stickerQuantity) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
 
     try {
       const points = Number.parseInt(stickerPoints)
+      const quantity = Number.parseInt(stickerQuantity)
+      const totalPointsToAdd = points * quantity
+      
       const stickerEmojis: Record<number, string> = {
         5: "⭐",
         10: "🏆",
@@ -197,23 +533,30 @@ export default function AdminPage() {
         30: "🔥",
       }
 
-      // Adicionar figurinha
-      await addDoc(collection(db, "stickers"), {
-        userId: selectedEmployee,
-        points: points,
-        emoji: stickerEmojis[points],
-        earnedAt: new Date().toISOString(),
-      })
+      // Adicionar múltiplas figurinhas
+      for (let i = 0; i < quantity; i++) {
+        await addDoc(collection(db, "stickers"), {
+          userId: selectedEmployee,
+          points: points,
+          emoji: stickerEmojis[points],
+          category: selectedCategory,
+          earnedAt: new Date().toISOString(),
+        })
+      }
 
-      // Atualizar pontos totais do usuário
+      // Atualizar pontos totais e pontos da categoria específica
+      const categoryField = `categoryPoints.${selectedCategory}`
       await updateDoc(doc(db, "users", selectedEmployee), {
-        totalPoints: increment(points),
+        totalPoints: increment(totalPointsToAdd),
+        [categoryField]: increment(totalPointsToAdd),
       })
 
       setSelectedEmployee("")
       setStickerPoints("")
+      setStickerQuantity("1")
+      setSelectedCategory("")
       loadData()
-      alert("Figurinha adicionada com sucesso!")
+      alert(`${quantity}x Figurinha de ${selectedCategory} adicionada com sucesso! (+${totalPointsToAdd} pontos)`)
     } catch (error) {
       console.error("Erro ao adicionar figurinha:", error)
       alert("Erro ao adicionar figurinha")
@@ -221,25 +564,33 @@ export default function AdminPage() {
   }
 
   const handleAddAchievement = async () => {
-    if (!selectedEmployee || !selectedAchievement) return
+    if (!selectedEmployee || !selectedAchievement || !achievementQuantity) {
+      alert("Por favor, preencha todos os campos.")
+      return
+    }
 
     try {
       const achievement = JSON.parse(selectedAchievement)
+      const quantity = Number.parseInt(achievementQuantity)
 
-      await addDoc(collection(db, "achievements"), {
-        userId: selectedEmployee,
-        name: achievement.name,
-        category: achievement.category,
-        description: achievementDescription,
-        image: achievement.image,
-        earnedAt: new Date().toISOString(),
-      })
+      // Adicionar múltiplas metas
+      for (let i = 0; i < quantity; i++) {
+        await addDoc(collection(db, "achievements"), {
+          userId: selectedEmployee,
+          name: achievement.name,
+          category: achievement.category,
+          description: achievementDescription,
+          image: achievement.image,
+          earnedAt: new Date().toISOString(),
+        })
+      }
 
       setSelectedEmployee("")
       setSelectedCategory("")
       setSelectedAchievement("")
       setAchievementDescription("")
-      alert("Meta adicionada com sucesso!")
+      setAchievementQuantity("1")
+      alert(`${quantity}x Meta "${achievement.name}" adicionada com sucesso!`)
     } catch (error) {
       console.error("Erro ao adicionar meta:", error)
       alert("Erro ao adicionar meta")
@@ -280,6 +631,97 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Erro ao excluir meta:", error)
       alert("Erro ao excluir meta")
+    }
+  }
+
+  // Funções para remoção de figurinhas e metas
+  const loadUserItems = async (userId: string) => {
+    if (!userId) return
+
+    try {
+      // Carregar figurinhas do usuário
+      const stickersQuery = query(collection(db, "stickers"), where("userId", "==", userId))
+      const stickersSnapshot = await getDocs(stickersQuery)
+      const stickers = stickersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+      }))
+      setUserStickers(stickers)
+
+      // Carregar metas do usuário
+      const achievementsQuery = query(collection(db, "achievements"), where("userId", "==", userId))
+      const achievementsSnapshot = await getDocs(achievementsQuery)
+      const achievements = achievementsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+      }))
+      setUserAchievements(achievements)
+    } catch (error) {
+      console.error("Erro ao carregar itens do usuário:", error)
+    }
+  }
+
+  const handleRemoveSticker = async () => {
+    if (!selectedItemToRemove) {
+      alert("Por favor, selecione uma figurinha para remover.")
+      return
+    }
+
+    if (!confirm("Tem certeza que deseja remover esta figurinha? Esta ação não pode ser desfeita.")) {
+      return
+    }
+
+    try {
+      const stickerToRemove = userStickers.find(s => s.id === selectedItemToRemove)
+      if (!stickerToRemove) return
+
+      // Remover figurinha do banco
+      await deleteDoc(doc(db, "stickers", selectedItemToRemove))
+
+      // Atualizar pontos do usuário (subtrair)
+      const categoryField = `categoryPoints.${stickerToRemove.category}`
+      await updateDoc(doc(db, "users", selectedEmployeeForRemoval), {
+        totalPoints: increment(-stickerToRemove.points),
+        [categoryField]: increment(-stickerToRemove.points),
+      })
+
+      // Recarregar dados
+      await loadUserItems(selectedEmployeeForRemoval)
+      await loadData()
+
+      setSelectedItemToRemove("")
+      alert(`Figurinha removida com sucesso! (-${stickerToRemove.points} pontos)`)
+    } catch (error) {
+      console.error("Erro ao remover figurinha:", error)
+      alert("Erro ao remover figurinha")
+    }
+  }
+
+  const handleRemoveAchievement = async () => {
+    if (!selectedItemToRemove) {
+      alert("Por favor, selecione uma meta para remover.")
+      return
+    }
+
+    if (!confirm("Tem certeza que deseja remover esta meta conquistada? Esta ação não pode ser desfeita.")) {
+      return
+    }
+
+    try {
+      // Remover meta do banco
+      await deleteDoc(doc(db, "achievements", selectedItemToRemove))
+
+      // Recarregar dados
+      await loadUserItems(selectedEmployeeForRemoval)
+      await loadData()
+
+      setSelectedItemToRemove("")
+      alert("Meta removida com sucesso!")
+    } catch (error) {
+      console.error("Erro ao remover meta:", error)
+      alert("Erro ao remover meta")
     }
   }
 
@@ -326,10 +768,11 @@ export default function AdminPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Tabs defaultValue="actions" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="actions">Ações Rápidas</TabsTrigger>
               <TabsTrigger value="achievements">Gerenciar Metas</TabsTrigger>
               <TabsTrigger value="employees">Colaboradores</TabsTrigger>
+              <TabsTrigger value="rankings">Rankings</TabsTrigger>
             </TabsList>
 
             {/* Ações Rápidas */}
@@ -402,6 +845,27 @@ export default function AdminPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      
+                      <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {defaultCategories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              <div className="flex items-center gap-2">
+                                {category === "Vendas" && "🟢"}
+                                {category === "Recuperação" && "🟠"}
+                                {category === "Atualização" && "🟣"}
+                                {category === "Galáxia de reconhecimento" && "🟡"}
+                                {category === "Pré-vendas" && "🔵"}
+                                <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
                       <Select value={stickerPoints} onValueChange={setStickerPoints}>
                         <SelectTrigger>
                           <SelectValue placeholder="Pontuação da figurinha" />
@@ -415,6 +879,31 @@ export default function AdminPage() {
                           <SelectItem value="30">🔥 30 pontos</SelectItem>
                         </SelectContent>
                       </Select>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 mb-1 block">
+                          Quantidade de figurinhas
+                        </label>
+                        <Select value={stickerQuantity} onValueChange={setStickerQuantity}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Quantidade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 figurinha</SelectItem>
+                            <SelectItem value="2">2 figurinhas</SelectItem>
+                            <SelectItem value="3">3 figurinhas</SelectItem>
+                            <SelectItem value="4">4 figurinhas</SelectItem>
+                            <SelectItem value="5">5 figurinhas</SelectItem>
+                            <SelectItem value="10">10 figurinhas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {stickerPoints && stickerQuantity && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Total: {Number.parseInt(stickerPoints) * Number.parseInt(stickerQuantity)} pontos
+                          </p>
+                        )}
+                      </div>
+                      
                       <Button onClick={handleAddSticker} className="w-full">
                         Adicionar Figurinha
                       </Button>
@@ -494,9 +983,203 @@ export default function AdminPage() {
                         value={achievementDescription}
                         onChange={(e) => setAchievementDescription(e.target.value)}
                       />
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 mb-1 block">
+                          Quantidade de metas conquistadas
+                        </label>
+                        <Select value={achievementQuantity} onValueChange={setAchievementQuantity}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Quantidade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 meta</SelectItem>
+                            <SelectItem value="2">2 metas</SelectItem>
+                            <SelectItem value="3">3 metas</SelectItem>
+                            <SelectItem value="4">4 metas</SelectItem>
+                            <SelectItem value="5">5 metas</SelectItem>
+                            <SelectItem value="10">10 metas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {selectedAchievement && achievementQuantity && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Será registrado {achievementQuantity}x a meta selecionada
+                          </p>
+                        )}
+                      </div>
+                      
                       <Button onClick={handleAddAchievement} className="w-full">
                         Registrar Meta
                       </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Remover Figurinhas/Metas */}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                      <CardContent className="flex items-center justify-center p-6">
+                        <div className="text-center">
+                          <Trash2 className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                          <h3 className="font-semibold text-gray-900">Remover Itens</h3>
+                          <p className="text-sm text-gray-600">Corrigir erros</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Remover Figurinhas ou Metas</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <Select 
+                        value={selectedEmployeeForRemoval} 
+                        onValueChange={(value) => {
+                          setSelectedEmployeeForRemoval(value)
+                          setRemovalType("")
+                          setSelectedItemToRemove("")
+                          loadUserItems(value)
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar colaborador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id}>
+                              {employee.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {selectedEmployeeForRemoval && (
+                        <Select value={removalType} onValueChange={(value: "sticker" | "achievement") => {
+                          setRemovalType(value)
+                          setSelectedItemToRemove("")
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="O que deseja remover?" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sticker">🏆 Figurinhas ({userStickers.length})</SelectItem>
+                            <SelectItem value="achievement">🎯 Metas ({userAchievements.length})</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      {removalType === "sticker" && userStickers.length > 0 && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">
+                            Selecionar figurinha para remover
+                          </label>
+                          <Select value={selectedItemToRemove} onValueChange={setSelectedItemToRemove}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Escolher figurinha" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {userStickers.map((sticker) => (
+                                <SelectItem key={sticker.id} value={sticker.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{sticker.emoji}</span>
+                                    <span>{sticker.points} pontos</span>
+                                    <span className="text-gray-500">({sticker.category})</span>
+                                    <span className="text-xs text-gray-400">{sticker.earnedAt}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedItemToRemove && (
+                            <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                              <p className="text-sm text-red-700">
+                                ⚠️ Esta figurinha será removida e os pontos serão subtraídos
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {removalType === "achievement" && userAchievements.length > 0 && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">
+                            Selecionar meta para remover
+                          </label>
+                          <Select value={selectedItemToRemove} onValueChange={setSelectedItemToRemove}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Escolher meta" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {userAchievements.map((achievement) => (
+                                <SelectItem key={achievement.id} value={achievement.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{achievement.image}</span>
+                                    <span>{achievement.name}</span>
+                                    <span className="text-gray-500">({achievement.category})</span>
+                                    <span className="text-xs text-gray-400">{achievement.earnedAt}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedItemToRemove && (
+                            <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                              <p className="text-sm text-red-700">
+                                ⚠️ Esta meta conquistada será removida permanentemente
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {removalType === "sticker" && userStickers.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          Este colaborador não possui figurinhas para remover
+                        </p>
+                      )}
+
+                      {removalType === "achievement" && userAchievements.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          Este colaborador não possui metas para remover
+                        </p>
+                      )}
+
+                      {selectedItemToRemove && (
+                        <div className="flex gap-2">
+                          {removalType === "sticker" && (
+                            <Button 
+                              onClick={handleRemoveSticker} 
+                              variant="destructive" 
+                              className="flex-1"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover Figurinha
+                            </Button>
+                          )}
+                          {removalType === "achievement" && (
+                            <Button 
+                              onClick={handleRemoveAchievement} 
+                              variant="destructive" 
+                              className="flex-1"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover Meta
+                            </Button>
+                          )}
+                          <Button 
+                            onClick={() => {
+                              setSelectedItemToRemove("")
+                              setRemovalType("")
+                              setSelectedEmployeeForRemoval("")
+                            }}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -526,9 +1209,16 @@ export default function AdminPage() {
                           <SelectValue placeholder="Categoria" />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((category) => (
+                          {defaultCategories.map((category) => (
                             <SelectItem key={category} value={category}>
-                              {category}
+                              <div className="flex items-center gap-2">
+                                {category === "Vendas" && "🟢"}
+                                {category === "Recuperação" && "🟠"}
+                                {category === "Atualização" && "🟣"}
+                                {category === "Galáxia de reconhecimento" && "🟡"}
+                                {category === "Pré-vendas" && "🔵"}
+                                <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -619,8 +1309,13 @@ export default function AdminPage() {
                         <tr className="border-b">
                           <th className="text-left py-3 px-4">Nome</th>
                           <th className="text-left py-3 px-4">Email</th>
-                          <th className="text-center py-3 px-4">Pontos Totais</th>
+                          <th className="text-center py-3 px-4">Total</th>
+                          <th className="text-center py-3 px-4">Vendas</th>
+                          <th className="text-center py-3 px-4">Recuperação</th>
+                          <th className="text-center py-3 px-4">Atualização</th>
+                          <th className="text-center py-3 px-4">Reconhecimento</th>
                           <th className="text-center py-3 px-4">Status</th>
+                          <th className="text-center py-3 px-4">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -634,9 +1329,39 @@ export default function AdminPage() {
                               </span>
                             </td>
                             <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-green-600">
+                                {employee.categoryPoints?.["Vendas"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-orange-600">
+                                {employee.categoryPoints?.["Recuperação"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-purple-600">
+                                {employee.categoryPoints?.["Atualização"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-medium text-yellow-600">
+                                {employee.categoryPoints?.["Galáxia de reconhecimento"] || 0}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                 Ativo
                               </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditEmployee(employee)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                             </td>
                           </tr>
                         ))}
@@ -646,8 +1371,264 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* Rankings por Categoria */}
+            <TabsContent value="rankings">
+              <div className="space-y-6">
+                {/* Seletor de Categoria */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-yellow-500" />
+                      Rankings por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {defaultCategories.map((category) => (
+                        <Button
+                          key={category}
+                          variant={selectedRankingCategory === category ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSelectedRankingCategory(category)}
+                          className="flex items-center gap-2"
+                        >
+                          {category === "Vendas" && "🟢"}
+                          {category === "Recuperação" && "🟠"}
+                          {category === "Atualização" && "🟣"}
+                          {category === "Galáxia de reconhecimento" && "🟡"}
+                          {category === "Pré-vendas" && "🔵"}
+                          {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Ranking da Categoria Selecionada */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Crown className="w-5 h-5 text-yellow-500" />
+                      Ranking - {selectedRankingCategory === "Galáxia de reconhecimento" ? "Reconhecimento" : selectedRankingCategory}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {getCategoryRanking(selectedRankingCategory).length > 0 ? (
+                        getCategoryRanking(selectedRankingCategory).map((employee, index) => (
+                          <div
+                            key={employee.id}
+                            className={`flex items-center justify-between p-4 rounded-lg border ${
+                              index === 0 ? 'bg-yellow-50 border-yellow-200' :
+                              index === 1 ? 'bg-gray-50 border-gray-200' :
+                              index === 2 ? 'bg-orange-50 border-orange-200' :
+                              'bg-white border-gray-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm">
+                                {index === 0 && <Crown className="w-5 h-5 text-yellow-500" />}
+                                {index === 1 && <Medal className="w-5 h-5 text-gray-500" />}
+                                {index === 2 && <Medal className="w-5 h-5 text-orange-500" />}
+                                {index > 2 && <span className="text-gray-600">{employee.position}º</span>}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{employee.name}</p>
+                                <p className="text-sm text-gray-600">{employee.email}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-gray-900">
+                                {employee.categoryPoints} pts
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {selectedRankingCategory === "Vendas" && "🟢 Vendas"}
+                                {selectedRankingCategory === "Recuperação" && "🟠 Recuperação"}
+                                {selectedRankingCategory === "Atualização" && "🟣 Atualização"}
+                                {selectedRankingCategory === "Galáxia de reconhecimento" && "🟡 Reconhecimento"}
+                                {category === "Pré-vendas" && "🔵"}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <Trophy className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500">
+                            Nenhum colaborador possui pontos em {selectedRankingCategory === "Galáxia de reconhecimento" ? "Reconhecimento" : selectedRankingCategory} ainda
+                          </p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Adicione figurinhas desta categoria para ver o ranking
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Resumo Geral */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Star className="w-5 h-5 text-blue-500" />
+                      Resumo Geral por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {defaultCategories.map((category) => {
+                        const ranking = getCategoryRanking(category)
+                        const totalPoints = ranking.reduce((sum, emp) => sum + emp.categoryPoints, 0)
+                        const participantes = ranking.length
+                        
+                        return (
+                          <div key={category} className="p-4 border rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              {category === "Vendas" && "🟢"}
+                              {category === "Recuperação" && "🟠"}
+                              {category === "Atualização" && "🟣"}
+                              {category === "Galáxia de reconhecimento" && "🟡"}
+                              {category === "Pré-vendas" && "🔵"}
+                              <span className="font-medium text-sm">
+                                {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-2xl font-bold text-gray-900">{totalPoints}</p>
+                              <p className="text-xs text-gray-600">pontos totais</p>
+                              <p className="text-xs text-gray-500">{participantes} participantes</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
           </Tabs>
         </div>
+
+        {/* Modal de Edição de Colaborador */}
+        {editingEmployee && (
+          <Dialog open={!!editingEmployee} onOpenChange={closeEditEmployee}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Colaborador</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome
+                  </label>
+                  <Input
+                    placeholder="Nome completo"
+                    value={editEmployeeName}
+                    onChange={(e) => setEditEmployeeName(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="Email"
+                    value={editEmployeeEmail}
+                    onChange={(e) => setEditEmployeeEmail(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Pontuação
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCategoryPoints(!showCategoryPoints)}
+                      disabled={loading}
+                    >
+                      {showCategoryPoints ? "Edição Simples" : "Editar por Categoria"}
+                    </Button>
+                  </div>
+                  
+                  {!showCategoryPoints ? (
+                    <div>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={editEmployeePoints}
+                        onChange={(e) => setEditEmployeePoints(e.target.value)}
+                        disabled={loading}
+                      />
+                      <p className="text-sm text-gray-500 mt-1">
+                        Ajuste a pontuação total do colaborador
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-500">
+                        Edite as pontuações por categoria (o total será calculado automaticamente)
+                      </p>
+                      
+                      {defaultCategories.map((category) => (
+                        <div key={category}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={editCategoryPoints[category] || "0"}
+                            onChange={(e) => setEditCategoryPoints(prev => ({
+                              ...prev,
+                              [category]: e.target.value
+                            }))}
+                            disabled={loading}
+                            className="text-sm"
+                          />
+                        </div>
+                      ))}
+                      
+                      <div className="pt-2 border-t">
+                        <p className="text-sm font-medium text-gray-700">
+                          Total Calculado: {Object.values(editCategoryPoints).reduce((sum, val) => sum + (parseInt(val) || 0), 0)} pontos
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <Button 
+                    onClick={handleEditEmployee} 
+                    disabled={loading}
+                    className="flex-1"
+                  >
+                    {loading ? "Salvando..." : "Salvar Alterações"}
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={closeEditEmployee}
+                    disabled={loading}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </ProtectedRoute>
   )
