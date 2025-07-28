@@ -28,6 +28,7 @@ interface Employee {
     "Recuperação": number
     "Atualização": number
     "Galáxia de reconhecimento": number
+    "Pré-vendas":  number
     [key: string]: number // Para categorias customizadas
   }
 }
