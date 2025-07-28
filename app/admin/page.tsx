@@ -76,12 +76,16 @@ const defaultAchievements = [
   { name: "Supernova da Inovação", category: "Galáxia de reconhecimento", image: "💡" },
   { name: "Satélite de conexão", category: "Galáxia de reconhecimento", image: "🛰️" },
   { name: "Figurinha DunkLee", category: "Galáxia de reconhecimento", image: "🏆" },
+
+   //Pré-vendas
+  { name:"Número de Reuniões", category: "Pré-vendas", image: "📅" },
+  { name: "Superação da Meta de Faturamento", category: "Pré-vendas", image: "💰" },
 ]
 
 const pointValues = [5, 10, 15, 20, 25, 30]
 
 // Categorias padrão do sistema
-const defaultCategories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"]
+const defaultCategories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento", "Pré-vendas"]
 
 // Função para inicializar pontuações por categoria
 const initializeCategoryPoints = () => {
@@ -121,13 +125,11 @@ export default function AdminPage() {
   const [selectedRankingCategory, setSelectedRankingCategory] = useState("Vendas")
 
   // Estados para remoção
-  const [selectedEmployeeForRemoval, setSelectedEmployeeForRemoval] = useState("")
-  const [removalType, setRemovalType] = useState<"sticker" | "achievement" | "">("")
-  const [userStickers, setUserStickers] = useState<any[]>([])
-  const [userAchievements, setUserAchievements] = useState<any[]>([])
-  const [selectedItemToRemove, setSelectedItemToRemove] = useState("")
-
-
+const [selectedEmployeeForRemoval, setSelectedEmployeeForRemoval] = useState("")
+const [removalType, setRemovalType] = useState<"sticker" | "achievement" | "">("")
+const [userStickers, setUserStickers] = useState<any[]>([])
+const [userAchievements, setUserAchievements] = useState<any[]>([])
+const [selectedItemToRemove, setSelectedItemToRemove] = useState("")
 
   // Função para obter ranking de uma categoria
   const getCategoryRanking = (category: string) => {
@@ -147,7 +149,7 @@ export default function AdminPage() {
   const [newAchievementImage, setNewAchievementImage] = useState("")
   const [newAchievementDescription, setNewAchievementDescription] = useState("")
 
-  const categories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento"]
+  const categories = ["Vendas", "Recuperação", "Atualização", "Galáxia de reconhecimento", "Pré-vendas"]
   const emojiOptions = [
     "🏢",
     "🏬",
@@ -188,6 +190,97 @@ export default function AdminPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // FUNÇÕES PARA REMOÇÃO
+const loadUserItems = async (userId: string) => {
+  if (!userId) return
+
+  try {
+    // Carregar figurinhas do usuário
+    const stickersQuery = query(collection(db, "stickers"), where("userId", "==", userId))
+    const stickersSnapshot = await getDocs(stickersQuery)
+    const stickers = stickersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+    }))
+    setUserStickers(stickers)
+
+    // Carregar metas do usuário
+    const achievementsQuery = query(collection(db, "achievements"), where("userId", "==", userId))
+    const achievementsSnapshot = await getDocs(achievementsQuery)
+    const achievements = achievementsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
+    }))
+    setUserAchievements(achievements)
+  } catch (error) {
+    console.error("Erro ao carregar itens do usuário:", error)
+  }
+}
+
+const handleRemoveSticker = async () => {
+  if (!selectedItemToRemove) {
+    alert("Por favor, selecione uma figurinha para remover.")
+    return
+  }
+
+  if (!confirm("Tem certeza que deseja remover esta figurinha? Esta ação não pode ser desfeita.")) {
+    return
+  }
+
+  try {
+    const stickerToRemove = userStickers.find(s => s.id === selectedItemToRemove)
+    if (!stickerToRemove) return
+
+    // Remover figurinha do banco
+    await deleteDoc(doc(db, "stickers", selectedItemToRemove))
+
+    // Atualizar pontos do usuário (subtrair)
+    const categoryField = `categoryPoints.${stickerToRemove.category}`
+    await updateDoc(doc(db, "users", selectedEmployeeForRemoval), {
+      totalPoints: increment(-stickerToRemove.points),
+      [categoryField]: increment(-stickerToRemove.points),
+    })
+
+    // Recarregar dados
+    await loadUserItems(selectedEmployeeForRemoval)
+    await loadData()
+
+    setSelectedItemToRemove("")
+    alert(`Figurinha removida com sucesso! (-${stickerToRemove.points} pontos)`)
+  } catch (error) {
+    console.error("Erro ao remover figurinha:", error)
+    alert("Erro ao remover figurinha")
+  }
+}
+
+const handleRemoveAchievement = async () => {
+  if (!selectedItemToRemove) {
+    alert("Por favor, selecione uma meta para remover.")
+    return
+  }
+
+  if (!confirm("Tem certeza que deseja remover esta meta conquistada? Esta ação não pode ser desfeita.")) {
+    return
+  }
+
+  try {
+    // Remover meta do banco
+    await deleteDoc(doc(db, "achievements", selectedItemToRemove))
+
+    // Recarregar dados
+    await loadUserItems(selectedEmployeeForRemoval)
+    await loadData()
+
+    setSelectedItemToRemove("")
+    alert("Meta removida com sucesso!")
+  } catch (error) {
+    console.error("Erro ao remover meta:", error)
+    alert("Erro ao remover meta")
+  }
+}
 
   const loadData = async () => {
     try {
@@ -765,6 +858,7 @@ export default function AdminPage() {
                                 {category === "Recuperação" && "🟠"}
                                 {category === "Atualização" && "🟣"}
                                 {category === "Galáxia de reconhecimento" && "🟡"}
+                                {category === "Pré-vendas" && "🔵"}
                                 <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
                               </div>
                             </SelectItem>
@@ -1122,6 +1216,7 @@ export default function AdminPage() {
                                 {category === "Recuperação" && "🟠"}
                                 {category === "Atualização" && "🟣"}
                                 {category === "Galáxia de reconhecimento" && "🟡"}
+                                {category === "Pré-vendas" && "🔵"}
                                 <span>{category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}</span>
                               </div>
                             </SelectItem>
@@ -1302,6 +1397,7 @@ export default function AdminPage() {
                           {category === "Recuperação" && "🟠"}
                           {category === "Atualização" && "🟣"}
                           {category === "Galáxia de reconhecimento" && "🟡"}
+                          {category === "Pré-vendas" && "🔵"}
                           {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
                         </Button>
                       ))}
@@ -1351,6 +1447,7 @@ export default function AdminPage() {
                                 {selectedRankingCategory === "Recuperação" && "🟠 Recuperação"}
                                 {selectedRankingCategory === "Atualização" && "🟣 Atualização"}
                                 {selectedRankingCategory === "Galáxia de reconhecimento" && "🟡 Reconhecimento"}
+                                {category === "Pré-vendas" && "🔵"}
                               </p>
                             </div>
                           </div>
@@ -1392,6 +1489,7 @@ export default function AdminPage() {
                               {category === "Recuperação" && "🟠"}
                               {category === "Atualização" && "🟣"}
                               {category === "Galáxia de reconhecimento" && "🟡"}
+                              {category === "Pré-vendas" && "🔵"}
                               <span className="font-medium text-sm">
                                 {category === "Galáxia de reconhecimento" ? "Reconhecimento" : category}
                               </span>
