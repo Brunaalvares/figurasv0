@@ -634,35 +634,6 @@ const handleRemoveAchievement = async () => {
     }
   }
 
-  // Funções para remoção de figurinhas e metas
-  const loadUserItems = async (userId: string) => {
-    if (!userId) return
-
-    try {
-      // Carregar figurinhas do usuário
-      const stickersQuery = query(collection(db, "stickers"), where("userId", "==", userId))
-      const stickersSnapshot = await getDocs(stickersQuery)
-      const stickers = stickersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
-      }))
-      setUserStickers(stickers)
-
-      // Carregar metas do usuário
-      const achievementsQuery = query(collection(db, "achievements"), where("userId", "==", userId))
-      const achievementsSnapshot = await getDocs(achievementsQuery)
-      const achievements = achievementsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        earnedAt: new Date(doc.data().earnedAt).toLocaleDateString('pt-BR')
-      }))
-      setUserAchievements(achievements)
-    } catch (error) {
-      console.error("Erro ao carregar itens do usuário:", error)
-    }
-  }
-
   const handleRemoveSticker = async () => {
     if (!selectedItemToRemove) {
       alert("Por favor, selecione uma figurinha para remover.")
